@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
+
+from langchain_core.tools import BaseTool
 
 from ..config import LLMConfig
 from ..protocols import LLMProtocol
 from .openai import OpenAILLM
+
+ToolHandler = Callable[[str, dict[str, Any]], Awaitable[str]]
 
 
 def create_llm(
@@ -15,50 +20,50 @@ def create_llm(
     model: str | None = None,
     temperature: float | None = None,
     config: LLMConfig | None = None,
+    tools: list[BaseTool] | list[dict[str, Any]] | None = None,
+    tool_handler: ToolHandler | None = None,
     **kwargs: Any,
 ) -> LLMProtocol:
     """
     Create an LLM instance.
-    
+
     Args:
-        provider: LLM provider name ("openai", "anthropic", etc.)
-        model: Model identifier (overrides config)
-        temperature: Sampling temperature (overrides config)
-        config: LLMConfig object (alternative to individual params)
-        **kwargs: Additional provider-specific parameters
-        
+        provider:      LLM provider name ("openai").
+        model:         Model identifier (overrides config).
+        temperature:   Sampling temperature (overrides config).
+        config:        LLMConfig object (alternative to individual params).
+        tools:         LangChain BaseTool list or raw OpenAI schema dicts.
+                       The LLM is bound to these so the model knows it can
+                       call them.
+        tool_handler:  Async callable ``(name, args) -> str`` that executes
+                       tool calls.  Typically ``agent.make_tool_handler()``.
+        **kwargs:      Extra provider-specific parameters.
+
     Returns:
-        LLM instance implementing LLMProtocol
-        
+        LLM instance implementing LLMProtocol.
+
     Raises:
-        ValueError: If provider is not supported
+        ValueError: If provider is not supported.
     """
-    # Use config if provided
     if config:
         provider = config.provider
         model = model or config.model
         temperature = temperature if temperature is not None else config.temperature
         kwargs.update(config.extra_params)
-    
-    # Create instance based on provider
+
     if provider == "openai":
-        if not model:
-            model = "gpt-4.1-mini"
-        
         return OpenAILLM(
-            model=model,
+            model=model or "gpt-4.1-mini",
             temperature=temperature or 0.7,
+            tools=tools,
+            tool_handler=tool_handler,
             **kwargs,
         )
-    
-    # Add more providers here
+
+    # Add more providers here:
     # elif provider == "anthropic":
     #     return AnthropicLLM(...)
-    # elif provider == "google":
-    #     return GoogleLLM(...)
-    
-    else:
-        raise ValueError(
-            f"Unsupported LLM provider: {provider}. "
-            f"Supported providers: openai"
-        )
+
+    raise ValueError(
+        f"Unsupported LLM provider: {provider!r}. Supported: openai"
+    )

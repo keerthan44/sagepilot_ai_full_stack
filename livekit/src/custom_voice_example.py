@@ -1,56 +1,41 @@
 """Example usage of the custom voice stack.
 
-This demonstrates how to use the custom voice stack instead of LiveKit's AgentSession.
+This demonstrates how to use the custom voice stack instead of LiveKit's AgentSession,
+including per-agent prompts and tool calling.
+
+Agent selection can be driven by LiveKit job metadata, e.g.:
+    {"agent_name": "customer_support"}
 """
 
 import logging
 
-from custom_voice.turn_detection.factory import create_turn_detector
 from dotenv import load_dotenv
-from livekit import rtc
 from livekit.agents import (
-    Agent,
     AgentServer,
     JobContext,
     JobProcess,
     cli,
 )
 
-# Import custom voice stack
+# Custom voice stack
 from custom_voice import (
-    AudioTurnDetectorConfig,
     CustomAgentSession,
-    TextTurnDetectorConfig,
-    TurnDetectionConfig,
     create_llm,
     create_stt,
     create_tts,
     create_vad,
 )
-from custom_voice.tts import ChunkingStrategy
+from custom_voice.agent import create_agent
+from custom_voice.turn_detection.factory import create_turn_detector
 
 logger = logging.getLogger("custom-agent")
 
 load_dotenv(".env.local")
 
-
-class Assistant(Agent):
-    def __init__(self) -> None:
-        super().__init__(
-            instructions="""You are a helpful voice AI assistant. The user is interacting with you via voice.
-            You eagerly assist users with their questions by providing information from your extensive knowledge.
-            Your responses are concise, to the point, and without any complex formatting or punctuation including emojis, asterisks, or other symbols.
-            You are curious, friendly, and have a sense of humor.""",
-        )
-
-
 server = AgentServer()
 
 
-def prewarm(proc: JobProcess):
-    """Prewarm models and components."""
-    # Note: In the custom stack, we don't use the prewarm pattern
-    # Components are initialized when the session is created
+def prewarm(proc: JobProcess) -> None:
     pass
 
 
@@ -58,17 +43,29 @@ server.setup_fnc = prewarm
 
 
 @server.rtc_session(agent_name="custom-voice-stack")
-async def my_agent(ctx: JobContext):
-    """Agent using custom voice stack."""
-    
-    # Logging setup
-    ctx.log_context_fields = {
-        "room": ctx.room.name,
-    }
-    
-    logger.info("Creating custom voice stack components...")
-    
-    # Create components using factory functions
+async def my_agent(ctx: JobContext) -> None:
+    """Voice agent with per-agent prompts and tool calling."""
+
+    ctx.log_context_fields = {"room": ctx.room.name}
+
+    # ----------------------------------------------------------------
+    # Pick agent from job metadata (default: general_assistant)
+    # ----------------------------------------------------------------
+    metadata = ctx.job.metadata if ctx.job and ctx.job.metadata else {}
+    if isinstance(metadata, str):
+        import json
+        try:
+            metadata = json.loads(metadata)
+        except Exception:
+            metadata = {}
+
+    agent_name = metadata.get("agent_name", "general_assistant")
+    logger.info("Loading agent %r", agent_name)
+    agent = create_agent(agent_name)
+
+    # ----------------------------------------------------------------
+    # STT
+    # ----------------------------------------------------------------
     stt = create_stt(
         provider="assemblyai",
         # provider="deepgram",
@@ -81,6 +78,8 @@ async def my_agent(ctx: JobContext):
         provider="openai",
         model="gpt-4.1-mini",
         temperature=0.7,
+        tools=agent.tools,                       # bind tools to model
+        tool_handler=agent.make_tool_handler(),  # execute on call
     )
     
     # # Option 1: ElevenLabs TTS
@@ -148,21 +147,16 @@ async def my_agent(ctx: JobContext):
         # audio_turn_detector=audio_turn_detector,  # Uncomment if using
         text_turn_detector=text_turn_detector,    # Uncomment if using
     )
-    
-    logger.info("Starting custom agent session...")
-    
-    # Start the session first — registers room handlers before the room connects,
-    # so no track_subscribed events are missed (same pattern as LiveKit's AgentSession).
+
     await session.start(
         room=ctx.room,
-        instructions="help the user with their questions and requests"
+        instructions=agent.instructions,
     )
-    
-    # Connect to the room — fires track/participant events into already-registered handlers.
-    # The LiveKit worker framework keeps the job alive until the room disconnects.
+
     await ctx.connect()
-    
-    logger.info("Custom voice stack agent is running!")
+
+    logger.info("Agent %r is running (tools: %s)", agent.name,
+                [t.name for t in agent.tools])
 
 
 if __name__ == "__main__":

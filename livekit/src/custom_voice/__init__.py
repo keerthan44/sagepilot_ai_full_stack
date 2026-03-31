@@ -17,6 +17,7 @@ from .config import (
     VoiceStackConfig,
     create_default_config,
 )
+from .agent import BaseAgent, create_agent, list_agents
 from .context import ConversationContext
 from .llm import create_llm
 from .protocols import (
@@ -67,6 +68,10 @@ __all__ = [
     "VADConfig",
     "VoiceStackConfig",
     "create_default_config",
+    # Agents
+    "BaseAgent",
+    "create_agent",
+    "list_agents",
     # Components
     "ConversationContext",
     "CustomAgentSession",
