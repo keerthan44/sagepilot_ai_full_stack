@@ -17,8 +17,8 @@ class SessionController:
     def __init__(self):
         self.service = SessionService()
     
-    def start_session(self, req: StartSessionRequest, db: DBSession = Depends(get_db)) -> StartSessionResponse:
-        result = self.service.start_session(db, req)
+    async def start_session(self, req: StartSessionRequest, db: DBSession = Depends(get_db)) -> StartSessionResponse:
+        result = await self.service.start_session(db, req)
         return StartSessionResponse(**result)
     
     def list_sessions(self, db: DBSession = Depends(get_db)) -> List[SessionResponse]:

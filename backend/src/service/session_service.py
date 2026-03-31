@@ -12,14 +12,14 @@ class SessionService:
     def __init__(self):
         self.repo = SessionRepository()
 
-    def start_session(self, db: DBSession, req: StartSessionRequest) -> dict:
+    async def start_session(self, db: DBSession, req: StartSessionRequest) -> dict:
         session_id = str(uuid.uuid4())
         room_name = f"room_{session_id}"
 
         session = self.repo.create(
             db=db,
             session_id=session_id,
-            agent_name=req.agent["name"],
+            agent_name=req.agent.get("agent_name") or 'Sales',
             config=req.model_dump()
         )
 
@@ -28,8 +28,9 @@ class SessionService:
             room=room_name
         )
 
-        dispatch_agent(
+        dispatch_result = await dispatch_agent(
             room_name=room_name,
+            agent_name='custom-voice-stack',
             metadata={
                 "session_id": session_id,
                 "config": req.model_dump()
