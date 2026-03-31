@@ -6,26 +6,31 @@ import { ProviderSelector } from '@/features/voice/components/ProviderSelector';
 import { StartCallButton } from '@/features/voice/components/StartCallButton';
 
 const TTS_OPTIONS = [
-  { value: 'openai', label: 'OpenAI' },
   { value: 'elevenlabs', label: 'ElevenLabs' },
-  { value: 'deepgram', label: 'Deepgram' },
+  { value: 'cartesia', label: 'Cartesia' },
 ];
 
 const STT_OPTIONS = [
   { value: 'deepgram', label: 'Deepgram' },
-  { value: 'openai', label: 'OpenAI Whisper' },
   { value: 'assemblyai', label: 'AssemblyAI' },
 ];
 
+const LLM_OPTIONS = [
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'gemini', label: 'Gemini' },
+];
+
 export default function HomePage() {
-  const [agentName, setAgentName] = useState('assistant');
-  const [ttsProvider, setTtsProvider] = useState('openai');
+  const [agentName, setAgentName] = useState('general_assistant');
+  const [ttsProvider, setTtsProvider] = useState('elevenlabs');
   const [sttProvider, setSttProvider] = useState('deepgram');
+  const [llmProvider, setLlmProvider] = useState('openai');
 
   const payload = {
-    agent: { name: agentName },
-    voice: { tts_provider: ttsProvider, stt_provider: sttProvider },
-    llm: {},
+    agent_name: agentName,
+    tts_provider: ttsProvider,
+    stt_provider: sttProvider,
+    llm_provider: llmProvider,
   };
 
   return (
@@ -60,6 +65,20 @@ export default function HomePage() {
             value={sttProvider}
             onChange={setSttProvider}
             options={STT_OPTIONS}
+          />
+        </section>
+
+        <div className="bg-border h-px" />
+
+        <section className="flex flex-col gap-4">
+          <h2 className="text-base font-semibold">LLM Configuration</h2>
+          <ProviderSelector
+            label="LLM Provider - Fixed To OpenAI for now"
+            name="llm_provider"
+            value={llmProvider}
+            onChange={setLlmProvider}
+            options={LLM_OPTIONS}
+            disabled={true}
           />
         </section>
 

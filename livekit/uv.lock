@@ -13,6 +13,7 @@ version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "httpx" },
     { name = "langchain-core" },
     { name = "langchain-openai" },
     { name = "livekit-agents", extra = ["assemblyai", "deepgram", "elevenlabs", "silero", "turn-detector"] },
@@ -33,6 +34,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "langchain-core", specifier = ">=1.2.23" },
     { name = "langchain-openai", specifier = ">=1.1.12" },
     { name = "livekit-agents", extras = ["assemblyai", "deepgram", "elevenlabs", "silero", "turn-detector"], specifier = "~=1.4" },

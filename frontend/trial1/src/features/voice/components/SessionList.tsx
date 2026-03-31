@@ -4,6 +4,20 @@ import Link from 'next/link';
 import { useSessions } from '@/features/voice/hooks/useSessions';
 
 export function SessionList() {
+  function humanize(text: string): string {
+  if (!text) return ""
+
+  return text
+    // split camelCase -> camel Case
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    // replace _ and - with space
+    .replace(/[_-]+/g, " ")
+    // lowercase everything first
+    .toLowerCase()
+    // capitalize each word
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim()
+}
   const { sessions, loading, error } = useSessions();
 
   if (loading) {
@@ -27,7 +41,7 @@ export function SessionList() {
             className="border-border bg-card hover:bg-accent block rounded-lg border px-4 py-3 transition-colors"
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">{session.agent_name}</span>
+              <span className="text-sm font-medium">{humanize(session.agent_name)}</span>
               <span className="text-muted-foreground text-xs">
                 {new Date(session.created_at).toLocaleString()}
               </span>

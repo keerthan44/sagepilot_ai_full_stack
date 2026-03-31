@@ -1,7 +1,11 @@
 export interface StartSessionPayload {
-  voice: Record<string, unknown>;
-  agent: Record<string, unknown>;
-  llm: Record<string, unknown>;
+  llm_provider: string;
+  llm_config?: Record<string, unknown> | null;
+  stt_provider: string;
+  stt_config?: Record<string, unknown> | null;
+  tts_provider: string;
+  tts_config?: Record<string, unknown> | null;
+  agent_name: string;
 }
 
 export interface StartSessionResponse {
@@ -10,10 +14,22 @@ export interface StartSessionResponse {
   room_name: string;
 }
 
+export interface ToolCall {
+  name: string;
+  args: Record<string, unknown>;
+  id: string;
+}
+
 export interface TranscriptEntry {
   role: string;
   content: string;
-  tool_call: Record<string, unknown>;
+  timestamp: number;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+  metadata?: {
+    name?: string;
+    [key: string]: unknown;
+  };
 }
 
 export interface Session {

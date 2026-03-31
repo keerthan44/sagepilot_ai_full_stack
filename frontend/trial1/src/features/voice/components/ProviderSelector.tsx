@@ -11,9 +11,17 @@ interface ProviderSelectorProps {
   value: string;
   onChange: (value: string) => void;
   options: ProviderOption[];
+  disabled?: boolean;
 }
 
-export function ProviderSelector({ label, name, value, onChange, options }: ProviderSelectorProps) {
+export function ProviderSelector({
+  label,
+  name,
+  value,
+  onChange,
+  options,
+  disabled = false,
+}: ProviderSelectorProps) {
   return (
     <fieldset className="flex flex-col gap-2">
       <legend className="text-foreground mb-1 text-sm font-semibold">{label}</legend>
@@ -27,6 +35,7 @@ export function ProviderSelector({ label, name, value, onChange, options }: Prov
               checked={value === option.value}
               onChange={() => onChange(option.value)}
               className="accent-primary"
+              disabled={disabled}
             />
             <span className="text-sm">{option.label}</span>
           </label>

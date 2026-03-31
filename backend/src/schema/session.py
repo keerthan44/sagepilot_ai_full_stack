@@ -3,17 +3,33 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 
+class ToolCallItem(BaseModel):
+    name: str
+    args: Dict[str, Any]
+    id: str
+
+
+class ToolCallMetadata(BaseModel):
+    name: str
+
+
 class Message(BaseModel):
     role: str
     content: str
-    tool_call: Optional[Dict[str, Any]] = None
+    timestamp: float
+    tool_calls: Optional[List[ToolCallItem]] = None
+    tool_call_id: Optional[str] = None
+    metadata: Optional[ToolCallMetadata] = None
 
 
 class StartSessionRequest(BaseModel):
-    voice: dict
-    agent: dict
-    llm: Optional[dict] = None
-
+    llm_provider: str
+    llm_config: Optional[Dict[str, Any]] = None
+    stt_provider: str
+    stt_config: Optional[Dict[str, Any]] = None
+    tts_provider: str
+    tts_config: Optional[Dict[str, Any]] = None
+    agent_name: str
 
 class StartSessionResponse(BaseModel):
     session_id: str

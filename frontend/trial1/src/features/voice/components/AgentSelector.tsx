@@ -12,9 +12,8 @@ interface AgentSelectorProps {
 }
 
 const DEFAULT_AGENTS: AgentOption[] = [
-  { value: 'assistant', label: 'Assistant' },
-  { value: 'customer-support', label: 'Customer Support' },
-  { value: 'sales', label: 'Sales' },
+  { value: 'general_assistant', label: 'General Assistant' },
+  { value: 'customer_support', label: 'Customer Support' },
 ];
 
 export function AgentSelector({ value, onChange, options = DEFAULT_AGENTS }: AgentSelectorProps) {
