@@ -1,5 +1,5 @@
 // Components
-export { AgentSelector } from './components/AgentSelector';
+export { AgentSelector, type AgentOption } from './components/AgentSelector';
 export { ProviderSelector } from './components/ProviderSelector';
 export { StartCallButton } from './components/StartCallButton';
 export { SessionList } from './components/SessionList';

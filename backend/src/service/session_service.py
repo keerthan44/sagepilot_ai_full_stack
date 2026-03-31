@@ -83,6 +83,7 @@ class SessionService:
                 req.tts_config = {
                     "model": "sonic-3",
                     "voice": "9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
+                    'language': 'en',
                     "transport": "http"
                 }
             required_keys = ["model", "voice", "transport"]
