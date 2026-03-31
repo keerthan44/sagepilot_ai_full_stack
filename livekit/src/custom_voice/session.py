@@ -44,11 +44,11 @@ if TYPE_CHECKING:
 class CustomAgentSession:
     """
     Custom Agent Session - Event-driven orchestration.
-    
+
     Uses asyncio.Queue as event bus with independent consumer tasks
     for VAD, STT, and turn detection that communicate via events.
     """
-    
+
     def __init__(
         self,
         *,
@@ -62,7 +62,7 @@ class CustomAgentSession:
     ):
         """
         Initialize custom agent session.
-        
+
         Args:
             stt: Speech-to-text component
             llm: Large language model component
@@ -79,7 +79,7 @@ class CustomAgentSession:
         self._audio_turn_detector = audio_turn_detector
         self._text_turn_detector = text_turn_detector
         self._config = config
-        
+
         self._audio_pipeline = AudioPipeline()
         self._conversation_context = ConversationContext()
         self._interruption_handler = InterruptionHandler(
@@ -87,7 +87,7 @@ class CustomAgentSession:
             llm=llm,
             tts=tts,
         )
-        
+
         if audio_turn_detector and text_turn_detector and config:
             self._turn_aggregator = TurnAggregator(
                 strategy=config.turn_detection.aggregation_strategy,
@@ -95,15 +95,15 @@ class CustomAgentSession:
             )
         else:
             self._turn_aggregator = None
-        
+
         self._event_bus: asyncio.Queue[Event] = asyncio.Queue()
-        
+
         self._vad_queue: asyncio.Queue[rtc.AudioFrame] = asyncio.Queue()
         self._stt_queue: asyncio.Queue[rtc.AudioFrame] = asyncio.Queue()
         self._audio_turn_queue: asyncio.Queue[tuple[rtc.AudioFrame, float]] | None = (
             asyncio.Queue() if audio_turn_detector else None
         )
-        
+
         self._audio_distributor = AudioDistributor(
             self._event_bus,
             self._audio_pipeline,
@@ -131,18 +131,20 @@ class CustomAgentSession:
             else None
         )
         self._event_coordinator = EventCoordinator(self._event_bus, self)
-        
+
         self._user_state: Literal["listening", "speaking", "away"] = "listening"
-        self._agent_state: Literal["initializing", "listening", "thinking", "speaking"] = "initializing"
+        self._agent_state: Literal[
+            "initializing", "listening", "thinking", "speaking"
+        ] = "initializing"
         self._room: rtc.Room | None = None
         self._started = False
         self._closed = False
-        
+
         self._speaking = False
         self._current_transcript = ""
         self._audio_turn_probability = 0.0
         self._text_turn_probability = 0.0
-        
+
         self._consumer_tasks: list[asyncio.Task] = []
         self._output_task: asyncio.Task | None = None
         # Keeps strong references to track-processing tasks so they aren't GC'd
@@ -154,27 +156,50 @@ class CustomAgentSession:
         self._audio_source: rtc.AudioSource | None = None
         self._audio_track: rtc.LocalAudioTrack | None = None
         self._audio_bstream: audio_utils.AudioByteStream | None = None
-    
+
     async def start(self, room: rtc.Room, instructions: str | None = None) -> None:
         """
         Start the agent session and all consumer tasks.
-        
+
         Args:
             room: LiveKit room to connect to
             instructions: System instructions for the LLM
         """
         if self._started:
             return
-        
+
         self._room = room
         self._started = True
-        
+
         if instructions:
             self._conversation_context.add_turn(
                 role="system",
                 content=instructions,
             )
-        
+
+        # Wire tool-use recording into the LLM so tool calls and results
+        # appear in the transcript automatically.
+        if hasattr(self._llm, "_on_tool_use") and self._llm._on_tool_use is None:
+
+            async def _record_tool_use(
+                calls: list[dict],
+                results: list[dict],
+            ) -> None:
+                self._conversation_context.add_turn(
+                    role="tool_call",
+                    content="",  # no text content; data is in tool_calls
+                    tool_calls=calls,
+                )
+                for r in results:
+                    self._conversation_context.add_turn(
+                        role="tool_result",
+                        content=r["content"],
+                        tool_call_id=r["tool_call_id"],
+                        metadata={"name": r["name"]},
+                    )
+
+            self._llm._on_tool_use = _record_tool_use
+
         await self._audio_pipeline.start()
 
         # Pre-create the audio source and local track so they exist before the
@@ -183,7 +208,7 @@ class CustomAgentSession:
         # publish_track() fails inside _output_audio_loop and silently kills the
         # output loop.
         tts_sample_rate: int = getattr(self._tts, "sample_rate", 24000)
-        
+
         self._audio_source = rtc.AudioSource(
             sample_rate=tts_sample_rate, num_channels=1
         )
@@ -196,23 +221,23 @@ class CustomAgentSession:
         )
 
         self._setup_room_handlers()
-        
+
         self._consumer_tasks = [
             asyncio.create_task(self._audio_distributor.run()),
             asyncio.create_task(self._vad_consumer.run()),
             asyncio.create_task(self._stt_consumer.run()),
             asyncio.create_task(self._event_coordinator.run()),
         ]
-        
+
         if self._audio_turn_consumer:
             self._consumer_tasks.append(
                 asyncio.create_task(self._audio_turn_consumer.run())
             )
-        
+
         self._output_task = asyncio.create_task(self._output_audio_loop())
-        
+
         self._set_agent_state("listening")
-    
+
     def _set_agent_state(self, state: str) -> None:
         """
         Update agent state and publish it to the LiveKit room as a participant
@@ -341,7 +366,7 @@ class CustomAgentSession:
         finally:
             await audio_stream.aclose()
             logger.debug("stopped reading audio stream for track %s", track.sid)
-    
+
     async def _evaluate_turn_complete(self) -> None:
         """
         Evaluate if turn is complete based on configured detectors.
@@ -351,7 +376,9 @@ class CustomAgentSession:
         """
         config = self._config.turn_detection if self._config else None
 
-        if not config or (not config.has_audio_detector() and not config.has_text_detector()):
+        if not config or (
+            not config.has_audio_detector() and not config.has_text_detector()
+        ):
             await asyncio.sleep(config.min_endpointing_delay if config else 0.5)
             await self._trigger_turn_complete()
             return
@@ -369,7 +396,7 @@ class CustomAgentSession:
         if config.needs_aggregation() and self._turn_aggregator:
             final_prob = self._turn_aggregator.aggregate(
                 audio_prob=self._audio_turn_probability,
-                text_prob=self._text_turn_probability
+                text_prob=self._text_turn_probability,
             )
 
             if final_prob >= 0.5:
@@ -382,11 +409,11 @@ class CustomAgentSession:
         Runs the endpointing delay + turn evaluation logic as a background task so
         the EventCoordinator is free to process new events (VAD, interruptions, etc.)
         while waiting for the delay and checking turn probabilities.
-        
+
         If probability < threshold, waits up to max_endpointing_delay. During this window:
         - If user speaks again (VAD START_OF_SPEECH), this task is cancelled and restarted
         - If window expires without new speech, responds anyway
-        
+
         Only one reply task runs at a time; if a reply is already in progress the new
         request is dropped (the running reply already incorporates the latest transcript).
         """
@@ -421,7 +448,7 @@ class CustomAgentSession:
 
                 # Determine threshold and probability based on detector configuration
                 should_respond_immediately = False
-                
+
                 if has_audio and not has_text:
                     # Audio-only detector
                     audio_threshold = (
@@ -429,13 +456,19 @@ class CustomAgentSession:
                         if td_config and td_config.audio_detector
                         else 0.5
                     )
-                    should_respond_immediately = self._audio_turn_probability >= audio_threshold
-                    
+                    should_respond_immediately = (
+                        self._audio_turn_probability >= audio_threshold
+                    )
+
                 elif has_text and not has_audio:
                     # Text-only detector
-                    text_threshold = getattr(self._text_turn_detector, "_threshold", 0.5)
-                    should_respond_immediately = self._text_turn_probability >= text_threshold
-                    
+                    text_threshold = getattr(
+                        self._text_turn_detector, "_threshold", 0.5
+                    )
+                    should_respond_immediately = (
+                        self._text_turn_probability >= text_threshold
+                    )
+
                 elif has_audio and has_text and self._turn_aggregator:
                     # Both detectors — aggregation
                     final_prob = self._turn_aggregator.aggregate(
@@ -450,7 +483,9 @@ class CustomAgentSession:
                         logger.info(
                             "turn complete: audio probability %.3f >= threshold %.3f",
                             self._audio_turn_probability,
-                            td_config.audio_detector.threshold if td_config and td_config.audio_detector else 0.5,
+                            td_config.audio_detector.threshold
+                            if td_config and td_config.audio_detector
+                            else 0.5,
                         )
                     elif has_text and not has_audio:
                         logger.info(
@@ -461,7 +496,9 @@ class CustomAgentSession:
                     elif has_audio and has_text:
                         logger.info(
                             "turn complete: aggregated probability %.3f >= 0.5 (audio=%.3f, text=%.3f)",
-                            final_prob, self._audio_turn_probability, self._text_turn_probability,
+                            final_prob,
+                            self._audio_turn_probability,
+                            self._text_turn_probability,
                         )
                     await self._trigger_turn_complete()
                     return
@@ -474,16 +511,16 @@ class CustomAgentSession:
                     "turn incomplete: probability below threshold, waiting up to %.2fs for more speech",
                     remaining_delay,
                 )
-                
+
                 await asyncio.sleep(remaining_delay)
-                
+
                 # Max delay expired without new speech — respond anyway
                 logger.info(
                     "turn complete: max endpointing delay expired (%.2fs), responding anyway",
                     max_delay,
                 )
                 await self._trigger_turn_complete()
-                        
+
             except asyncio.CancelledError:
                 logger.debug("turn evaluation: cancelled (likely due to new speech)")
                 raise
@@ -496,7 +533,7 @@ class CustomAgentSession:
         if self._reply_task and not self._reply_task.done():
             logger.debug(
                 "turn evaluation: cancelling previous evaluation (new speech detected, transcript=%r)",
-                transcript_snapshot
+                transcript_snapshot,
             )
             self._reply_task.cancel()
             try:
@@ -504,45 +541,49 @@ class CustomAgentSession:
             except asyncio.CancelledError:
                 pass
 
-        logger.debug("EventCoordinator: scheduling generate_reply (transcript=%r)", transcript_snapshot)
+        logger.debug(
+            "EventCoordinator: scheduling generate_reply (transcript=%r)",
+            transcript_snapshot,
+        )
         self._reply_task = asyncio.create_task(_run(), name="generate_reply")
-    
+
     async def _trigger_turn_complete(self) -> None:
         """Trigger turn complete event and generate response."""
         if self._current_transcript:
             self._conversation_context.add_turn(
-                role="user",
-                content=self._current_transcript
+                role="user", content=self._current_transcript
             )
-        
-        await self._event_bus.put(Event(
-            type=EventType.TURN_COMPLETE,
-            data=TurnCompleteData(
-                transcript=self._current_transcript,
-                audio_prob=self._audio_turn_probability,
-                text_prob=self._text_turn_probability
+
+        await self._event_bus.put(
+            Event(
+                type=EventType.TURN_COMPLETE,
+                data=TurnCompleteData(
+                    transcript=self._current_transcript,
+                    audio_prob=self._audio_turn_probability,
+                    text_prob=self._text_turn_probability,
+                ),
             )
-        ))
-        
+        )
+
         await self.generate_reply()
-        
+
         self._current_transcript = ""
         self._audio_turn_probability = 0.0
         self._text_turn_probability = 0.0
-    
+
     async def _output_audio_loop(self) -> None:
         """
         Output audio loop — captures synthesized audio frames to the LiveKit room.
 
         The AudioSource and LocalAudioTrack are created in start() and published
         as soon as the room connects (_on_room_connected → _publish_audio_track).
-        
+
         Uses AudioByteStream to buffer and rebatch audio frames into consistent sizes,
         preventing InvalidState errors that occur when frames arrive too quickly.
         This matches LiveKit's approach in their TTS plugins.
         """
         frames_captured = 0
-        
+
         try:
             async for audio_frame in self._audio_pipeline.output_stream():
                 if self._closed:
@@ -577,7 +618,7 @@ class CustomAgentSession:
 
                 # Push frame data into buffer and get rebatched frames
                 rebatched_frames = self._audio_bstream.push(audio_frame.data.tobytes())
-                
+
                 # Capture each rebatched frame
                 for frame in rebatched_frames:
                     # Check for interruption before each frame capture
@@ -587,11 +628,11 @@ class CustomAgentSession:
                             frames_captured,
                         )
                         break
-                    
+
                     try:
                         await self._audio_source.capture_frame(frame)
                         frames_captured += 1
-                        
+
                         if frames_captured == 1:
                             logger.info(
                                 "first audio frame captured to source "
@@ -602,7 +643,8 @@ class CustomAgentSession:
                             )
                         elif frames_captured % 50 == 0:
                             logger.debug(
-                                "audio output: %d frames captured so far", frames_captured
+                                "audio output: %d frames captured so far",
+                                frames_captured,
                             )
                     except Exception as e:
                         if "InvalidState" in str(e):
@@ -622,7 +664,7 @@ class CustomAgentSession:
                                 frames_captured,
                             )
                             return
-                
+
                 # Break outer loop if interrupted during inner loop
                 if self._interruption_handler.is_interrupted:
                     break
@@ -633,7 +675,10 @@ class CustomAgentSession:
             logger.exception("unexpected error in output audio loop")
         finally:
             # Flush any remaining buffered audio (unless interrupted)
-            if self._audio_bstream is not None and not self._interruption_handler.is_interrupted:
+            if (
+                self._audio_bstream is not None
+                and not self._interruption_handler.is_interrupted
+            ):
                 try:
                     remaining_frames = self._audio_bstream.flush()
                     for frame in remaining_frames:
@@ -645,8 +690,10 @@ class CustomAgentSession:
                                 pass
                 except Exception:
                     pass
-            
-            logger.debug("output audio loop exited (%d frames captured)", frames_captured)
+
+            logger.debug(
+                "output audio loop exited (%d frames captured)", frames_captured
+            )
             if self._audio_track and self._room:
                 try:
                     await self._room.local_participant.unpublish_track(
@@ -657,12 +704,12 @@ class CustomAgentSession:
             if self._audio_source:
                 await self._audio_source.aclose()
                 self._audio_source = None
-    
+
     async def _handle_interruption(self) -> None:
         """Handle user interruption - cancel ongoing reply task."""
         logger.info("_handle_interruption: cancelling reply task")
         await self._interruption_handler.interrupt()
-        
+
         # Cancel the active reply task if it's running
         if self._reply_task and not self._reply_task.done():
             self._reply_task.cancel()
@@ -671,73 +718,73 @@ class CustomAgentSession:
             except asyncio.CancelledError:
                 pass
             self._reply_task = None
-        
+
         # Drain any queued audio frames to stop playback immediately
         logger.debug("_handle_interruption: draining output audio queue and buffer")
         self._audio_pipeline.clear_buffers()
-        
+
         # Clear the AudioByteStream buffer to stop any buffered audio
         if self._audio_bstream is not None:
             self._audio_bstream.clear()
             logger.debug("_handle_interruption: cleared AudioByteStream buffer")
-        
+
         # Reset transcript accumulation
         self._current_transcript = ""
         self._audio_turn_probability = 0.0
         self._text_turn_probability = 0.0
-        
+
         self._set_agent_state("listening")
-    
+
     async def say(self, text: str) -> None:
         """
         Make the agent speak text.
-        
+
         Args:
             text: Text to speak
         """
         if self._closed:
             return
-        
+
         self._set_agent_state("speaking")
         self._interruption_handler.set_agent_speaking(True)
-        
+
         try:
             async for audio_frame in self._tts.synthesize_stream(text):
                 if self._interruption_handler.is_interrupted:
                     break
-                
+
                 await self._audio_pipeline.push_output_audio(audio_frame)
-            
+
             self._conversation_context.add_turn(
                 role="assistant",
                 content=text,
             )
-        
+
         finally:
             self._set_agent_state("listening")
             self._interruption_handler.set_agent_speaking(False)
             # Reset interruption state for next turn
             self._interruption_handler.reset()
-    
+
     async def generate_reply(self, user_input: str | None = None) -> None:
         """
         Generate and speak LLM response with streaming.
-        
+
         LLM returns async iterator that is fed directly to TTS.
         TTS handles internal chunking based on its configured strategy.
-        
+
         Args:
             user_input: Optional user input to respond to
         """
         if self._closed:
             return
-        
+
         if user_input:
             self._conversation_context.add_turn(
                 role="user",
                 content=user_input,
             )
-        
+
         self._set_agent_state("thinking")
         self._interruption_handler.set_agent_speaking(True)
 
@@ -758,20 +805,27 @@ class CustomAgentSession:
                 async for token in self._llm.generate_stream(messages):
                     token_idx += 1
                     if token_idx == 1:
-                        logger.debug("generate_reply: first token from LLM: %r", token[:20])
+                        logger.debug(
+                            "generate_reply: first token from LLM: %r", token[:20]
+                        )
                     collected_tokens.append(token)
                     yield token
-                logger.debug("generate_reply: LLM stream complete (%d tokens collected)", token_idx)
+                logger.debug(
+                    "generate_reply: LLM stream complete (%d tokens collected)",
+                    token_idx,
+                )
 
             self._set_agent_state("speaking")
             frames_pushed = 0
-            
+
             try:
                 async for audio_frame in self._tts.synthesize_stream_from_iterator(
                     _collecting_token_stream()
                 ):
                     if self._interruption_handler.is_interrupted:
-                        logger.info("generate_reply: interrupted after %d frames", frames_pushed)
+                        logger.info(
+                            "generate_reply: interrupted after %d frames", frames_pushed
+                        )
                         break
 
                     await self._audio_pipeline.push_output_audio(audio_frame)
@@ -793,29 +847,29 @@ class CustomAgentSession:
                     role="assistant",
                     content=full_response,
                 )
-        
+
         finally:
             self._set_agent_state("listening")
             self._interruption_handler.set_agent_speaking(False)
             # Reset interruption state for next turn
             self._interruption_handler.reset()
-    
+
     async def aclose(self) -> None:
         """Close session and cancel all consumer tasks."""
         if self._closed:
             return
-        
+
         self._closed = True
-        
+
         self._audio_distributor.close()
         self._vad_consumer.close()
         self._stt_consumer.close()
         if self._audio_turn_consumer:
             self._audio_turn_consumer.close()
         self._event_coordinator.close()
-        
+
         await self._event_bus.put(Event(type=EventType.SHUTDOWN, data=None))
-        
+
         for task in list(self._track_tasks.values()):
             task.cancel()
             try:
@@ -823,14 +877,14 @@ class CustomAgentSession:
             except asyncio.CancelledError:
                 pass
         self._track_tasks.clear()
-        
+
         for task in self._consumer_tasks:
             task.cancel()
             try:
                 await task
             except asyncio.CancelledError:
                 pass
-        
+
         if self._reply_task and not self._reply_task.done():
             self._reply_task.cancel()
             try:
@@ -844,24 +898,40 @@ class CustomAgentSession:
                 await self._output_task
             except asyncio.CancelledError:
                 pass
-        
+
         await self._vad.aclose()
         await self._stt.close()
         await self._llm.close()
         await self._tts.close()
         await self._audio_pipeline.aclose()
-    
+
     @property
     def user_state(self) -> str:
         """Get current user state."""
         return self._user_state
-    
+
     @property
     def agent_state(self) -> str:
         """Get current agent state."""
         return self._agent_state
-    
+
     @property
     def conversation_history(self) -> ConversationContext:
-        """Get conversation history."""
+        """Get conversation history (including tool calls and results)."""
         return self._conversation_context
+
+    def dump_transcript(self) -> list[dict]:
+        """
+        Return the full conversation transcript as a list of plain dicts.
+
+        Each entry has at minimum: ``role``, ``content``, ``timestamp``.
+        Tool-call entries also carry ``tool_calls``.
+        Tool-result entries also carry ``tool_call_id``.
+
+        Suitable for logging, JSON serialisation, or storing in a database.
+        """
+        return self._conversation_context.dump_transcript()
+
+    def dump_transcript_json(self, indent: int = 2) -> str:
+        """Return the full transcript as a formatted JSON string."""
+        return self._conversation_context.dump_transcript_json(indent=indent)

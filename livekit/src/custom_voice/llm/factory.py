@@ -9,7 +9,7 @@ from langchain_core.tools import BaseTool
 
 from ..config import LLMConfig
 from ..protocols import LLMProtocol
-from .openai import OpenAILLM
+from .openai import OnToolUse, OpenAILLM
 
 ToolHandler = Callable[[str, dict[str, Any]], Awaitable[str]]
 
@@ -22,6 +22,7 @@ def create_llm(
     config: LLMConfig | None = None,
     tools: list[BaseTool] | list[dict[str, Any]] | None = None,
     tool_handler: ToolHandler | None = None,
+    on_tool_use: OnToolUse | None = None,
     **kwargs: Any,
 ) -> LLMProtocol:
     """
@@ -37,6 +38,8 @@ def create_llm(
                        call them.
         tool_handler:  Async callable ``(name, args) -> str`` that executes
                        tool calls.  Typically ``agent.make_tool_handler()``.
+        on_tool_use:   Optional async callback fired after each tool round
+                       with calls + results for transcript recording.
         **kwargs:      Extra provider-specific parameters.
 
     Returns:
@@ -57,6 +60,7 @@ def create_llm(
             temperature=temperature or 0.7,
             tools=tools,
             tool_handler=tool_handler,
+            on_tool_use=on_tool_use,
             **kwargs,
         )
 
@@ -64,6 +68,4 @@ def create_llm(
     # elif provider == "anthropic":
     #     return AnthropicLLM(...)
 
-    raise ValueError(
-        f"Unsupported LLM provider: {provider!r}. Supported: openai"
-    )
+    raise ValueError(f"Unsupported LLM provider: {provider!r}. Supported: openai")
