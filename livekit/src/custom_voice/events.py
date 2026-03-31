@@ -30,6 +30,8 @@ class EventType(Enum):
     
     AGENT_START_SPEAKING = auto()
     AGENT_STOP_SPEAKING = auto()
+    AGENT_AUDIO_PUBLISHED_START = auto()
+    AGENT_AUDIO_PUBLISHED_END = auto()
     INTERRUPTION_DETECTED = auto()
     
     SHUTDOWN = auto()

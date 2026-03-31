@@ -5,19 +5,21 @@ import { useSessions } from '@/features/voice/hooks/useSessions';
 
 export function SessionList() {
   function humanize(text: string): string {
-  if (!text) return ""
+    if (!text) return '';
 
-  return text
-    // split camelCase -> camel Case
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    // replace _ and - with space
-    .replace(/[_-]+/g, " ")
-    // lowercase everything first
-    .toLowerCase()
-    // capitalize each word
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .trim()
-}
+    return (
+      text
+        // split camelCase -> camel Case
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        // replace _ and - with space
+        .replace(/[_-]+/g, ' ')
+        // lowercase everything first
+        .toLowerCase()
+        // capitalize each word
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+        .trim()
+    );
+  }
   const { sessions, loading, error } = useSessions();
 
   if (loading) {

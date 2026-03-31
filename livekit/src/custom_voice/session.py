@@ -144,6 +144,9 @@ class CustomAgentSession:
         self._current_transcript = ""
         self._audio_turn_probability = 0.0
         self._text_turn_probability = 0.0
+        self._audio_publishing = False  # Track if audio is actively being published
+        self._generation_complete = asyncio.Event()  # Signal when TTS generation is done
+        self._generation_complete.set()  # Initially set (no generation in progress)
 
         self._consumer_tasks: list[asyncio.Task] = []
         self._output_task: asyncio.Task | None = None
@@ -583,6 +586,7 @@ class CustomAgentSession:
         This matches LiveKit's approach in their TTS plugins.
         """
         frames_captured = 0
+        current_utterance_frames = 0  # Track frames for current utterance
 
         try:
             async for audio_frame in self._audio_pipeline.output_stream():
@@ -632,15 +636,20 @@ class CustomAgentSession:
                     try:
                         await self._audio_source.capture_frame(frame)
                         frames_captured += 1
+                        current_utterance_frames += 1
 
-                        if frames_captured == 1:
-                            logger.info(
-                                "first audio frame captured to source "
-                                "(sample_rate=%d, samples=%d, duration=%.3fs)",
-                                frame.sample_rate,
-                                frame.samples_per_channel,
-                                frame.duration,
-                            )
+                        if frames_captured == 1 or current_utterance_frames == 1:
+                            # First frame of this utterance - agent is now actually speaking
+                            if not self._audio_publishing:
+                                self._audio_publishing = True
+                                self._set_agent_state("speaking")
+                                logger.info(
+                                    "first audio frame captured to source "
+                                    "(sample_rate=%d, samples=%d, duration=%.3fs)",
+                                    frame.sample_rate,
+                                    frame.samples_per_channel,
+                                    frame.duration,
+                                )
                         elif frames_captured % 50 == 0:
                             logger.debug(
                                 "audio output: %d frames captured so far",
@@ -668,6 +677,20 @@ class CustomAgentSession:
                 # Break outer loop if interrupted during inner loop
                 if self._interruption_handler.is_interrupted:
                     break
+                
+                # Check if generation is complete and queue might be empty
+                if self._generation_complete.is_set() and current_utterance_frames > 0:
+                    # Wait a bit to see if more frames arrive
+                    await asyncio.sleep(0.05)
+                    # If queue is empty, this utterance is done
+                    if self._audio_pipeline._output_queue.empty():
+                        logger.info(
+                            "utterance complete: %d frames published",
+                            current_utterance_frames,
+                        )
+                        current_utterance_frames = 0
+                        self._audio_publishing = False
+                        self._set_agent_state("listening")
 
         except asyncio.CancelledError:
             pass
@@ -690,6 +713,12 @@ class CustomAgentSession:
                                 pass
                 except Exception:
                     pass
+            
+            # Ensure state is reset when loop exits
+            if self._audio_publishing:
+                self._audio_publishing = False
+                self._set_agent_state("listening")
+                logger.info("audio publishing stopped, state reset to listening")
 
             logger.debug(
                 "output audio loop exited (%d frames captured)", frames_captured
@@ -745,7 +774,7 @@ class CustomAgentSession:
         if self._closed:
             return
 
-        self._set_agent_state("speaking")
+        self._generation_complete.clear()  # Mark generation as in progress
         self._interruption_handler.set_agent_speaking(True)
 
         try:
@@ -761,7 +790,7 @@ class CustomAgentSession:
             )
 
         finally:
-            self._set_agent_state("listening")
+            self._generation_complete.set()  # Mark generation as complete
             self._interruption_handler.set_agent_speaking(False)
             # Reset interruption state for next turn
             self._interruption_handler.reset()
@@ -786,6 +815,7 @@ class CustomAgentSession:
             )
 
         self._set_agent_state("thinking")
+        self._generation_complete.clear()  # Mark generation as in progress
         self._interruption_handler.set_agent_speaking(True)
 
         try:
@@ -815,7 +845,6 @@ class CustomAgentSession:
                     token_idx,
                 )
 
-            self._set_agent_state("speaking")
             frames_pushed = 0
 
             try:
@@ -849,7 +878,7 @@ class CustomAgentSession:
                 )
 
         finally:
-            self._set_agent_state("listening")
+            self._generation_complete.set()  # Mark generation as complete
             self._interruption_handler.set_agent_speaking(False)
             # Reset interruption state for next turn
             self._interruption_handler.reset()

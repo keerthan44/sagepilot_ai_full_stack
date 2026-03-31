@@ -105,19 +105,21 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
 
   const transcript = session.transcript ?? [];
   function humanize(text: string): string {
-  if (!text) return ""
+    if (!text) return '';
 
-  return text
-    // split camelCase -> camel Case
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    // replace _ and - with space
-    .replace(/[_-]+/g, " ")
-    // lowercase everything first
-    .toLowerCase()
-    // capitalize each word
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .trim()
-}
+    return (
+      text
+        // split camelCase -> camel Case
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        // replace _ and - with space
+        .replace(/[_-]+/g, ' ')
+        // lowercase everything first
+        .toLowerCase()
+        // capitalize each word
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+        .trim()
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6">

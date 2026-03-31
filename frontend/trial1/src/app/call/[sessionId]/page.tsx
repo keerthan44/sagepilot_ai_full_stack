@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import {
   type AgentState,
-  useAgent,
   useLocalParticipant,
   useSessionContext,
+  useVoiceAssistant,
 } from '@livekit/components-react';
 import { AgentSessionProvider } from '@/components/agents-ui/agent-session-provider';
 import { AgentStateIndicator } from '@/features/voice/components/AgentStateIndicator';
@@ -15,7 +15,7 @@ import { AudioVisualizer } from '@/features/voice/components/AudioVisualizer';
 import { useVoiceConnection } from '@/features/voice/hooks/useVoiceConnection';
 import type { VoiceConnectionState } from '@/features/voice/types';
 
-function mapAgentState(agentState: AgentState): VoiceConnectionState {
+function mapAgentStateToSimple(agentState: AgentState): VoiceConnectionState {
   switch (agentState) {
     case 'speaking':
       return 'speaking';
@@ -34,11 +34,18 @@ function mapAgentState(agentState: AgentState): VoiceConnectionState {
 function CallView({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const session = useSessionContext();
-  const agent = useAgent();
+  const { state: agentState, audioTrack: agentAudioTrack, agent } = useVoiceAssistant();
   const { isMicrophoneEnabled, localParticipant } = useLocalParticipant();
 
-  const agentConnected = agent.isConnected;
-  const state = mapAgentState(agent.state);
+  // Agent is connected when it's in an active state (not connecting/disconnected/failed)
+  const agentConnected =
+    agentState === 'listening' ||
+    agentState === 'thinking' ||
+    agentState === 'speaking' ||
+    agentState === 'idle';
+
+  // For the simple state indicator, map to our simplified states
+  const simpleState = mapAgentStateToSimple(agentState);
 
   async function handleEndCall() {
     await session.end();
@@ -60,14 +67,14 @@ function CallView({ sessionId }: { sessionId: string }) {
       <div className="border-border bg-card flex min-h-[160px] flex-col items-center justify-center gap-6 rounded-2xl border px-12 py-10 shadow-sm">
         {agentConnected ? (
           <>
-            <AudioVisualizer state={state} barCount={7} />
-            <AgentStateIndicator state={state} />
+            <AudioVisualizer state={agentState} audioTrack={agentAudioTrack} barCount={7} />
+            <AgentStateIndicator state={simpleState} />
           </>
         ) : (
           <div className="flex flex-col items-center gap-3">
             <span className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
             <p className="text-muted-foreground text-sm">
-              {agent.state === 'failed'
+              {agentState === 'failed'
                 ? 'Agent failed to connect.'
                 : 'Waiting for agent to connect…'}
             </p>

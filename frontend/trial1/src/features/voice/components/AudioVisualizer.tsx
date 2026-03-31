@@ -1,67 +1,35 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import type { VoiceConnectionState } from '@/features/voice/types';
+import type { AgentState } from '@livekit/components-react';
+import type { TrackReferenceOrPlaceholder } from '@livekit/components-react';
+import { AgentAudioVisualizerBar } from '@/components/agents-ui/agent-audio-visualizer-bar';
 
 interface AudioVisualizerProps {
-  state: VoiceConnectionState;
+  state: AgentState;
+  audioTrack?: TrackReferenceOrPlaceholder;
   barCount?: number;
 }
 
-export function AudioVisualizer({ state, barCount = 5 }: AudioVisualizerProps) {
-  const barsRef = useRef<(HTMLDivElement | null)[]>([]);
-  const animationRef = useRef<number | null>(null);
+export function AudioVisualizer({ state, audioTrack, barCount = 5 }: AudioVisualizerProps) {
+  let size: 'icon' | 'sm' | 'md' | 'lg' | 'xl' = 'xl';
 
-  const isActive = state === 'listening' || state === 'speaking';
-
-  useEffect(() => {
-    if (!isActive) {
-      barsRef.current.forEach((bar) => {
-        if (bar) bar.style.transform = 'scaleY(0.15)';
-      });
-      return;
-    }
-
-    function animate() {
-      barsRef.current.forEach((bar) => {
-        if (!bar) return;
-        const scale = state === 'speaking' ? 0.2 + Math.random() * 0.8 : 0.1 + Math.random() * 0.4;
-        bar.style.transform = `scaleY(${scale})`;
-      });
-      animationRef.current = requestAnimationFrame(() => {
-        setTimeout(animate, 80);
-      });
-    }
-
-    animate();
-
-    return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    };
-  }, [isActive, state]);
+  if (barCount <= 5) {
+    size = 'xl';
+  } else if (barCount <= 10) {
+    size = 'lg';
+  } else if (barCount <= 15) {
+    size = 'md';
+  } else if (barCount <= 30) {
+    size = 'sm';
+  }
 
   return (
-    <div
-      className="flex items-center justify-center gap-1"
-      style={{ height: '64px' }}
-      aria-hidden="true"
-    >
-      {Array.from({ length: barCount }).map((_, i) => (
-        <div
-          key={i}
-          ref={(el) => {
-            barsRef.current[i] = el;
-          }}
-          className="bg-primary w-2 rounded-full transition-transform"
-          style={{
-            height: '48px',
-            transform: 'scaleY(0.15)',
-            transitionDuration: '80ms',
-            transitionTimingFunction: 'ease-in-out',
-            transitionDelay: `${i * 10}ms`,
-          }}
-        />
-      ))}
-    </div>
+    <AgentAudioVisualizerBar
+      size={size}
+      state={state}
+      audioTrack={audioTrack}
+      barCount={barCount}
+      className="h-[112px]"
+    />
   );
 }
