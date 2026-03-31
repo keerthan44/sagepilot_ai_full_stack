@@ -1,4 +1,4 @@
-"""OpenAI LLM implementation."""
+"""OpenAI LLM implementation using LangChain."""
 
 from __future__ import annotations
 
@@ -8,7 +8,14 @@ import os
 from collections.abc import AsyncIterable
 from typing import Any
 
-from openai import AsyncOpenAI
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
+from langchain_openai import ChatOpenAI
 
 from ..protocols import LLMMessage, LLMResponse
 from .base import BaseLLM
@@ -18,7 +25,7 @@ logger = logging.getLogger("custom-agent")
 
 class OpenAILLM(BaseLLM):
     """
-    OpenAI Large Language Model implementation.
+    OpenAI Large Language Model implementation using LangChain.
     
     Supports streaming and function calling.
     """
@@ -33,14 +40,14 @@ class OpenAILLM(BaseLLM):
         **kwargs: Any,
     ):
         """
-        Initialize OpenAI LLM.
+        Initialize OpenAI LLM with LangChain.
         
         Args:
             model: OpenAI model name (e.g., "gpt-4", "gpt-4.1-mini")
             api_key: OpenAI API key (or set OPENAI_API_KEY env var)
             temperature: Sampling temperature (0.0 to 2.0)
             max_tokens: Maximum tokens to generate
-            **kwargs: Additional OpenAI client parameters
+            **kwargs: Additional LangChain ChatOpenAI parameters
         """
         super().__init__(
             model=model,
@@ -56,32 +63,48 @@ class OpenAILLM(BaseLLM):
                 "variable or pass api_key parameter."
             )
         
-        self._client = AsyncOpenAI(api_key=api_key, **kwargs)
+        # Initialize LangChain ChatOpenAI
+        self._llm = ChatOpenAI(
+            model=model,
+            api_key=api_key,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            streaming=True,
+            **kwargs,
+        )
     
     def _convert_messages(
         self,
         messages: list[LLMMessage],
-    ) -> list[dict[str, Any]]:
-        """Convert LLMMessage objects to OpenAI format."""
+    ) -> list[BaseMessage]:
+        """Convert LLMMessage objects to LangChain format."""
         converted = []
-        logger.debug("OpenAILLM: converting messages to OpenAI format (messages=%d)", len(messages))
+        logger.debug("OpenAILLM: converting messages to LangChain format (messages=%d)", len(messages))
         
         for msg in messages:
-            openai_msg: dict[str, Any] = {
-                "role": msg.role,
-                "content": msg.content,
-            }
-            
-            if msg.name:
-                openai_msg["name"] = msg.name
-            
-            if msg.tool_calls:
-                openai_msg["tool_calls"] = msg.tool_calls
-            
-            if msg.tool_call_id:
-                openai_msg["tool_call_id"] = msg.tool_call_id
-            
-            converted.append(openai_msg)
+            if msg.role == "system":
+                converted.append(SystemMessage(content=msg.content))
+            elif msg.role == "user":
+                converted.append(HumanMessage(content=msg.content))
+            elif msg.role == "assistant":
+                # Handle tool calls if present
+                if msg.tool_calls:
+                    converted.append(
+                        AIMessage(
+                            content=msg.content or "",
+                            additional_kwargs={"tool_calls": msg.tool_calls},
+                        )
+                    )
+                else:
+                    converted.append(AIMessage(content=msg.content))
+            elif msg.role == "tool":
+                # Tool response message
+                converted.append(
+                    ToolMessage(
+                        content=msg.content,
+                        tool_call_id=msg.tool_call_id or "",
+                    )
+                )
         
         return converted
     
@@ -92,7 +115,7 @@ class OpenAILLM(BaseLLM):
         **kwargs: Any,
     ) -> AsyncIterable[str]:
         """
-        Generate a streaming response from OpenAI.
+        Generate a streaming response from OpenAI via LangChain.
         
         Args:
             messages: Conversation history
@@ -105,49 +128,37 @@ class OpenAILLM(BaseLLM):
         self._check_closed()
         self._reset_cancel()
         
-        # Convert messages
-        openai_messages = self._convert_messages(messages)
-        logger.info(f"Openai Messages: {openai_messages}")
+        # Convert messages to LangChain format
+        lc_messages = self._convert_messages(messages)
+        logger.info(f"LangChain Messages: {[type(m).__name__ for m in lc_messages]}")
         
-        # Build request parameters
-        params: dict[str, Any] = {
-            "model": self._model,
-            "messages": openai_messages,
-            "temperature": kwargs.get("temperature", self._temperature),
-            "stream": True,
-        }
-        
-        if self._max_tokens:
-            params["max_tokens"] = self._max_tokens
-        
-        if tools:
-            params["tools"] = tools
+        # Update LLM parameters if provided
+        llm = self._llm
+        if kwargs.get("temperature") is not None:
+            llm = llm.bind(temperature=kwargs["temperature"])
         
         logger.info(
             "OpenAILLM: starting generation (model=%s, messages=%d)",
             self._model,
-            len(openai_messages),
+            len(lc_messages),
         )
-        stream = await self._client.chat.completions.create(**params)
-
+        
         token_count = 0
         try:
-            async for chunk in stream:
+            # Stream tokens from LangChain
+            async for chunk in llm.astream(lc_messages):
                 if self._check_cancelled():
                     logger.info("OpenAILLM: generation cancelled after %d tokens", token_count)
                     break
                 
-                if chunk.choices:
-                    delta = chunk.choices[0].delta
-                    if delta.content:
-                        token_count += 1
-                        if token_count == 1:
-                            logger.debug("OpenAILLM: first token received")
-                        yield delta.content
+                # Extract content from AIMessageChunk
+                if hasattr(chunk, "content") and chunk.content:
+                    token_count += 1
+                    if token_count == 1:
+                        logger.debug("OpenAILLM: first token received")
+                    yield chunk.content
         except asyncio.CancelledError:
             logger.info("OpenAILLM: generation cancelled via CancelledError after %d tokens", token_count)
-            # Close the stream to abort the HTTP request
-            await stream.close()
             raise
         finally:
             logger.info("OpenAILLM: generation complete (%d token chunks)", token_count)
@@ -159,7 +170,7 @@ class OpenAILLM(BaseLLM):
         **kwargs: Any,
     ) -> LLMResponse:
         """
-        Generate a complete response from OpenAI.
+        Generate a complete response from OpenAI via LangChain.
         
         Args:
             messages: Conversation history
@@ -171,56 +182,42 @@ class OpenAILLM(BaseLLM):
         """
         self._check_closed()
         
-        # Convert messages
-        openai_messages = self._convert_messages(messages)
+        # Convert messages to LangChain format
+        lc_messages = self._convert_messages(messages)
         
-        # Build request parameters
-        params: dict[str, Any] = {
-            "model": self._model,
-            "messages": openai_messages,
-            "temperature": kwargs.get("temperature", self._temperature),
-        }
+        # Update LLM parameters if provided
+        llm = self._llm
+        if kwargs.get("temperature") is not None:
+            llm = llm.bind(temperature=kwargs["temperature"])
         
-        if self._max_tokens:
-            params["max_tokens"] = self._max_tokens
-        
-        if tools:
-            params["tools"] = tools
-        
-        # Get response
-        response = await self._client.chat.completions.create(**params)
+        # Get response from LangChain
+        response = await llm.ainvoke(lc_messages)
         
         # Parse response
-        choice = response.choices[0]
-        message = choice.message
+        content = response.content if isinstance(response.content, str) else ""
         
         # Extract tool calls if present
         tool_calls = None
-        if message.tool_calls:
+        if hasattr(response, "tool_calls") and response.tool_calls:
             tool_calls = [
                 {
-                    "id": tc.id,
-                    "type": tc.type,
+                    "id": tc.get("id", ""),
+                    "type": "function",
                     "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
+                        "name": tc.get("name", ""),
+                        "arguments": tc.get("args", {}),
                     },
                 }
-                for tc in message.tool_calls
+                for tc in response.tool_calls
             ]
         
-        # Extract usage
+        # LangChain doesn't provide usage info in the response object by default
+        # We'd need to use callbacks to capture it, so we'll leave it as None
         usage = None
-        if response.usage:
-            usage = {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
-            }
         
         return LLMResponse(
-            content=message.content or "",
-            finish_reason=choice.finish_reason,
+            content=content,
+            finish_reason="stop",  # LangChain doesn't expose finish_reason directly
             tool_calls=tool_calls,
             usage=usage,
         )
@@ -228,4 +225,4 @@ class OpenAILLM(BaseLLM):
     async def close(self) -> None:
         """Close and cleanup."""
         await super().close()
-        await self._client.close()
+        # LangChain ChatOpenAI doesn't require explicit cleanup
