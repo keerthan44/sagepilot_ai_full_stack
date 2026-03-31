@@ -13,10 +13,11 @@ version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
+    { name = "cartesia" },
     { name = "httpx" },
     { name = "langchain-core" },
     { name = "langchain-openai" },
-    { name = "livekit-agents", extra = ["assemblyai", "deepgram", "elevenlabs", "silero", "turn-detector"] },
+    { name = "livekit-agents", extra = ["assemblyai", "cartesia", "deepgram", "elevenlabs", "silero", "turn-detector"] },
     { name = "livekit-plugins-noise-cancellation" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -34,10 +35,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.9" },
+    { name = "cartesia", specifier = ">=3.0.2" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "langchain-core", specifier = ">=1.2.23" },
     { name = "langchain-openai", specifier = ">=1.1.12" },
-    { name = "livekit-agents", extras = ["assemblyai", "deepgram", "elevenlabs", "silero", "turn-detector"], specifier = "~=1.4" },
+    { name = "livekit-agents", extras = ["assemblyai", "cartesia", "deepgram", "elevenlabs", "silero", "turn-detector"], specifier = "~=1.4" },
     { name = "livekit-plugins-noise-cancellation", specifier = "~=0.2" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "openai", specifier = ">=1.0" },
@@ -290,6 +292,23 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/8e/ff/70dca7d7cb1cbc0edb2c6cc0c38b65cba36cccc491eca64cabd5fe7f8670/backports_asyncio_runner-1.2.0.tar.gz", hash = "sha256:a5aa7b2b7d8f8bfcaa2b57313f70792df84e32a2a746f585213373f900b42162", size = 69893 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/59/76ab57e3fe74484f48a53f8e337171b4a2349e506eabe136d7e01d059086/backports_asyncio_runner-1.2.0-py3-none-any.whl", hash = "sha256:0da0a936a8aeb554eccb426dc55af3ba63bcdc69fa1a600b5bb305413a4477b5", size = 12313 },
+]
+
+[[package]]
+name = "cartesia"
+version = "3.0.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "distro" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "sniffio" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/41/65/5c2085821842b334a43025becbb70c52d02a458c0b24f9c1a0912d7e7e13/cartesia-3.0.2.tar.gz", hash = "sha256:beeff16cd5a36d30d908984e84591e6e7c20429e54c5822fca5c16bf26dd805a", size = 584593 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/48/db/4e7ddf0a31c4c94fa5badd6b1b4fc52733f8bb8b98e4c53293a467b95149/cartesia-3.0.2-py3-none-any.whl", hash = "sha256:ec19decf77cac350a1e38872d50213daecd51839afb522011d68a49dcae6f1b5", size = 170183 },
 ]
 
 [[package]]
@@ -1134,6 +1153,9 @@ wheels = [
 assemblyai = [
     { name = "livekit-plugins-assemblyai" },
 ]
+cartesia = [
+    { name = "livekit-plugins-cartesia" },
+]
 codecs = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -1214,6 +1236,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/9b/8f/390b80cd5057ceabc33240ed97e446540ee29549dd63ca9a5649ac9d2317/livekit_plugins_assemblyai-1.5.1.tar.gz", hash = "sha256:b940fa3f431779589ac86cea7246aa9c95f7b4f643fc0fb301b942a6056075ea", size = 8885 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0b/95/5b8efa63d4520f65fe099aea28fc1f213ba78374da6041af38c19fb08e15/livekit_plugins_assemblyai-1.5.1-py3-none-any.whl", hash = "sha256:9040b59b37a07da2d43c77cfa4cb26860426f421175e858b922e846d42df82ee", size = 9412 },
+]
+
+[[package]]
+name = "livekit-plugins-cartesia"
+version = "1.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "livekit-agents" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5c/da/06ba8510ae2d40d95d5de4efc2f577ff9e4803a15ddce70b4244f89a15f5/livekit_plugins_cartesia-1.5.1.tar.gz", hash = "sha256:2f2d986038c247c028d7eb0f220c45035182bb3f0ee96b81e5f62024e4cc1ea2", size = 12643 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4a/a8/3aca31124cbfc3168dde5fe6d644b484191436084297c32b84b48733f519/livekit_plugins_cartesia-1.5.1-py3-none-any.whl", hash = "sha256:26cf2218dee2d39708c3818801d07fcbe8b718811baa8fefd636056d55a45ea2", size = 15655 },
 ]
 
 [[package]]

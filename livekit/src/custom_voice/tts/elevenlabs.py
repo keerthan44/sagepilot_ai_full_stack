@@ -228,6 +228,12 @@ class ElevenLabsTTS(BaseTTS):
             except Exception:
                 logger.exception("ElevenLabsTTS: WS reader error")
             finally:
+                if frames_read == 0 and messages_read > 0:
+                    logger.warning(
+                        "ElevenLabsTTS: WS received %d messages but 0 audio frames — "
+                        "check API key, voice ID, and network connectivity",
+                        messages_read,
+                    )
                 await utterance_queue.put(None)
                 logger.debug("ElevenLabsTTS: WS reader done (%d messages, %d frames)", messages_read, frames_read)
         
@@ -335,8 +341,9 @@ class ElevenLabsTTS(BaseTTS):
         session = self._get_session()
         frames_yielded = 0
         buf = b""
-        # Emit fixed-size 20 ms frames
-        frame_bytes = int(self._sample_rate * 0.02) * 2  # 16-bit samples
+        # Emit 100 ms frames — large enough to avoid micro-bursts that cause
+        # jitter, small enough to keep latency reasonable.
+        frame_bytes = int(self._sample_rate * 0.1) * 2  # 16-bit PCM
 
         async with session.post(
             url,
@@ -358,7 +365,8 @@ class ElevenLabsTTS(BaseTTS):
                 "ElevenLabsTTS: HTTP streaming started (format=%s)", self._output_format
             )
             chunks_received = 0
-            async for chunk in response.content.iter_chunked(4096):
+            # Read in larger network chunks to keep the event loop less busy
+            async for chunk in response.content.iter_chunked(16384):
                 if self._check_cancelled():
                     return
                 chunks_received += 1
@@ -386,7 +394,7 @@ class ElevenLabsTTS(BaseTTS):
             "ElevenLabsTTS: HTTP synthesis done (%d chunks received, %d frames, ~%d ms)",
             chunks_received,
             frames_yielded,
-            frames_yielded * 20,
+            frames_yielded * 100,
         )
 
     # ------------------------------------------------------------------
@@ -428,12 +436,14 @@ class ElevenLabsTTS(BaseTTS):
         text_iterator: AsyncIterable[str],
     ) -> AsyncIterable[rtc.AudioFrame]:
         """
-        Synthesize audio from a streaming LLM token iterator with internal chunking.
+        Synthesize audio from a streaming LLM token iterator.
 
-        Buffers tokens and flushes based on the configured strategy:
-        - SENTENCE: flush at sentence-ending punctuation (. ! ? \\n)
-        - WORD: flush at word boundaries (space)
-        - IMMEDIATE: flush as soon as min_chunk_size chars are buffered
+        HTTP transport: collects all tokens then sends a single request to
+        ElevenLabs, producing one continuous audio stream with no inter-sentence
+        gaps or jitter.
+
+        WebSocket transport: uses sentence-based chunking to flush early for
+        lower time-to-first-audio.
 
         Args:
             text_iterator: Async iterator yielding text tokens from the LLM
@@ -443,13 +453,54 @@ class ElevenLabsTTS(BaseTTS):
         """
         self._check_closed()
         self._reset_cancel()
-        
+
+        if self._transport == "http":
+            # Collect all tokens first, then make a single HTTP call.
+            # Multiple serial HTTP round-trips (one per sentence chunk) cause
+            # silence gaps between sentences — jittery audio. A single call
+            # returns one continuous PCM stream with no gaps.
+            token_count = 0
+            parts: list[str] = []
+            try:
+                async for token in text_iterator:
+                    token_count += 1
+                    if self._check_cancelled():
+                        return
+                    parts.append(token)
+            except Exception:
+                logger.exception("ElevenLabsTTS: error while consuming token iterator")
+                raise
+
+            full_text = "".join(parts).strip()
+            logger.debug(
+                "ElevenLabsTTS: HTTP collected %d tokens (%d chars), sending single request",
+                token_count,
+                len(full_text),
+            )
+            if not full_text:
+                return
+
+            audio_frames_yielded = 0
+            async for audio_frame in self._synthesize_http(full_text):
+                if self._check_cancelled():
+                    return
+                audio_frames_yielded += 1
+                yield audio_frame
+
+            logger.info(
+                "ElevenLabsTTS: streaming synthesis complete (%d tokens, 1 chunk, %d audio frames)",
+                token_count,
+                audio_frames_yielded,
+            )
+            return
+
+        # WebSocket transport: sentence-chunked streaming for lower TTFA
         buffer = ""
         sentence_endings = ('.', '!', '?', '\n')
         chunks_sent = 0
         audio_frames_yielded = 0
         logger.debug(
-            "ElevenLabsTTS: starting streaming synthesis (strategy=%s)",
+            "ElevenLabsTTS: starting WS streaming synthesis (strategy=%s)",
             self._chunking_strategy.value,
         )
 
@@ -461,7 +512,7 @@ class ElevenLabsTTS(BaseTTS):
                     logger.debug("ElevenLabsTTS: first token received from LLM: %r", token[:20])
                 elif token_count % 20 == 0:
                     logger.debug("ElevenLabsTTS: received %d tokens so far", token_count)
-                
+
                 if self._check_cancelled():
                     logger.debug("ElevenLabsTTS: cancelled after %d tokens", token_count)
                     break
@@ -501,20 +552,10 @@ class ElevenLabsTTS(BaseTTS):
                             audio_frames_yielded += 1
                             yield audio_frame
                     buffer = ""
-                else:
-                    if token_count <= 5 or token_count % 50 == 0:
-                        logger.debug(
-                            "ElevenLabsTTS: buffering token %d (buffer_size=%d, should_flush=%s)",
-                            token_count,
-                            len(buffer),
-                            should_flush,
-                        )
         except Exception:
             logger.exception("ElevenLabsTTS: error while consuming token iterator")
             raise
 
-        logger.debug("ElevenLabsTTS: finished consuming tokens (total=%d, buffer_remaining=%d)", token_count, len(buffer))
-        
         if buffer.strip() and not self._check_cancelled():
             chunks_sent += 1
             logger.debug(

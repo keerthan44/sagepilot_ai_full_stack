@@ -67,6 +67,7 @@ def create_tts(
         return ElevenLabsTTS(
             voice_id=voice,
             model=model,
+            transport=transport,
             **kwargs,
         )
     

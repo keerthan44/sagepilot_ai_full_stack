@@ -1,5 +1,5 @@
 import logging
-from livekit.plugins import deepgram, elevenlabs, assemblyai, cartesia
+from livekit.plugins import deepgram, elevenlabs, assemblyai
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -14,7 +14,7 @@ from livekit.agents import (
     room_io,
 )
 from livekit.plugins import noise_cancellation, silero
-from livekit.plugins.turn_detector.multilingual import MultilingualModel
+from livekit.plugins.turn_detector.english import EnglishModel
 
 logger = logging.getLogger("agent")
 
@@ -80,7 +80,7 @@ async def my_agent(ctx: JobContext):
         ),
         # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
         # See more at https://docs.livekit.io/agents/build/turns
-        turn_detection=MultilingualModel(),
+        turn_detection=EnglishModel(),
         vad=ctx.proc.userdata["vad"],
         # allow the LLM to generate a response while waiting for the end of turn
         # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation

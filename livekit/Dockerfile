@@ -77,4 +77,4 @@ USER appuser
 # Run the AgentServer using UV
 # UV will activate the virtual environment and run the agent.
 # The "start" command tells the AgentServer to connect to LiveKit and begin waiting for jobs.
-CMD ["uv", "run", "src/agent.py", "start"]
+CMD ["uv", "run", "src/custom_voice_example.py", "start"]
