@@ -40,4 +40,4 @@ export interface Session {
   created_at: string;
 }
 
-export type VoiceConnectionState = 'idle' | 'connecting' | 'listening' | 'speaking';
+export type VoiceConnectionState = 'idle' | 'connecting' | 'listening' | 'speaking' | 'thinking';

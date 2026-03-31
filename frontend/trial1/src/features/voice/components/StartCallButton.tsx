@@ -18,6 +18,10 @@ export function StartCallButton({ payload }: StartCallButtonProps) {
       const params = new URLSearchParams({
         token: result.token,
         room_name: result.room_name,
+        agent_name: payload.agent_name,
+        tts_provider: payload.tts_provider,
+        stt_provider: payload.stt_provider,
+        llm_provider: payload.llm_provider,
       });
       router.push(`/call/${result.session_id}?${params.toString()}`);
     }

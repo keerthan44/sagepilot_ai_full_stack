@@ -11,6 +11,7 @@ const STATE_CONFIG: Record<VoiceConnectionState, { label: string; color: string 
   connecting: { label: 'Connecting…', color: 'bg-yellow-400' },
   listening: { label: 'Listening', color: 'bg-green-500' },
   speaking: { label: 'Speaking', color: 'bg-blue-500' },
+  thinking: { label: 'Thinking', color: 'bg-purple-500' },
 };
 
 export function AgentStateIndicator({ state }: AgentStateIndicatorProps) {

@@ -4,36 +4,18 @@ import { useState } from 'react';
 import { type AgentOption, AgentSelector } from '@/features/voice/components/AgentSelector';
 import { ProviderSelector } from '@/features/voice/components/ProviderSelector';
 import { StartCallButton } from '@/features/voice/components/StartCallButton';
+import {
+  VOICE_CALL_AGENT_OPTIONS,
+  VOICE_CALL_LLM_OPTIONS,
+  VOICE_CALL_STT_OPTIONS,
+  VOICE_CALL_TTS_OPTIONS,
+} from '@/features/voice/voice-call-config';
 
-const AGENT_OPTIONS: AgentOption[] = [
-  {
-    value: 'general_assistant',
-    label: 'General assistant',
-    description:
-      'You can talk about anything. Available tool calls: get_weather, get_current_time.',
-  },
-  {
-    value: 'customer_support',
-    label: 'Customer support',
-    description:
-      'You can talk about a specific order. Available tool calls: cancel_order, get_return_policy, lookup_order.',
-  },
-];
+const AGENT_OPTIONS: AgentOption[] = VOICE_CALL_AGENT_OPTIONS;
 
-const TTS_OPTIONS = [
-  { value: 'elevenlabs', label: 'ElevenLabs' },
-  { value: 'cartesia', label: 'Cartesia' },
-];
-
-const STT_OPTIONS = [
-  { value: 'deepgram', label: 'Deepgram' },
-  { value: 'assemblyai', label: 'AssemblyAI' },
-];
-
-const LLM_OPTIONS = [
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'gemini', label: 'Gemini' },
-];
+const TTS_OPTIONS = [...VOICE_CALL_TTS_OPTIONS];
+const STT_OPTIONS = [...VOICE_CALL_STT_OPTIONS];
+const LLM_OPTIONS = [...VOICE_CALL_LLM_OPTIONS];
 
 export default function HomePage() {
   const [agentName, setAgentName] = useState('general_assistant');

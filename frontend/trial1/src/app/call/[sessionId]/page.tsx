@@ -14,13 +14,19 @@ import { AgentStateIndicator } from '@/features/voice/components/AgentStateIndic
 import { AudioVisualizer } from '@/features/voice/components/AudioVisualizer';
 import { useVoiceConnection } from '@/features/voice/hooks/useVoiceConnection';
 import type { VoiceConnectionState } from '@/features/voice/types';
+import {
+  type VoiceCallDisplayFromUrl,
+  voiceCallDisplayFromSearchParams,
+} from '@/features/voice/voice-call-config';
 
 function mapAgentStateToSimple(agentState: AgentState): VoiceConnectionState {
   switch (agentState) {
     case 'speaking':
       return 'speaking';
     case 'listening':
+      return 'listening';
     case 'thinking':
+      return 'thinking';
     case 'idle':
       return 'listening';
     default:
@@ -28,23 +34,29 @@ function mapAgentStateToSimple(agentState: AgentState): VoiceConnectionState {
   }
 }
 
-/**
- * Rendered inside AgentSessionProvider so LiveKit context hooks work correctly.
- */
-function CallView({ sessionId }: { sessionId: string }) {
+function ConfigPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <aside className="border-border bg-card/90 flex flex-col rounded-xl border p-3 text-sm shadow-sm backdrop-blur-sm">
+      <h3 className="text-foreground border-border mb-2 border-b pb-1.5 text-xs font-semibold tracking-wide uppercase">
+        {title}
+      </h3>
+      {children}
+    </aside>
+  );
+}
+
+function CallView({ sessionId, display }: { sessionId: string; display: VoiceCallDisplayFromUrl }) {
   const router = useRouter();
   const session = useSessionContext();
-  const { state: agentState, audioTrack: agentAudioTrack, agent } = useVoiceAssistant();
+  const { state: agentState, audioTrack: agentAudioTrack } = useVoiceAssistant();
   const { isMicrophoneEnabled, localParticipant } = useLocalParticipant();
 
-  // Agent is connected when it's in an active state (not connecting/disconnected/failed)
   const agentConnected =
     agentState === 'listening' ||
     agentState === 'thinking' ||
     agentState === 'speaking' ||
     agentState === 'idle';
 
-  // For the simple state indicator, map to our simplified states
   const simpleState = mapAgentStateToSimple(agentState);
 
   async function handleEndCall() {
@@ -57,60 +69,93 @@ function CallView({ sessionId }: { sessionId: string }) {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center gap-10 py-20">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold tracking-tight">Active Call</h1>
-        <p className="text-muted-foreground mt-1 font-mono text-sm">{sessionId}</p>
-      </div>
+    <div className="flex flex-col items-center px-4 pt-12 pb-10">
+      <header className="mb-6 text-center">
+        <h1 className="text-2xl font-bold tracking-tight">Active call</h1>
+        <p className="text-muted-foreground mt-1 font-mono text-xs">{sessionId}</p>
+      </header>
 
-      {/* Agent state card */}
-      <div className="border-border bg-card flex min-h-[160px] flex-col items-center justify-center gap-6 rounded-2xl border px-12 py-10 shadow-sm">
-        {agentConnected ? (
-          <>
-            <AudioVisualizer state={agentState} audioTrack={agentAudioTrack} barCount={7} />
-            <AgentStateIndicator state={simpleState} />
-          </>
-        ) : (
-          <div className="flex flex-col items-center gap-3">
-            <span className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
-            <p className="text-muted-foreground text-sm">
-              {agentState === 'failed'
-                ? 'Agent failed to connect.'
-                : 'Waiting for agent to connect…'}
-            </p>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[200px_380px_200px] lg:items-center">
+        {/* Left: agent info */}
+        <ConfigPanel title="Your agent">
+          <p className="text-foreground text-sm leading-snug font-medium">{display.agentLabel}</p>
+          <p className="text-muted-foreground mt-2 text-xs leading-relaxed">
+            {display.agentDescription}
+          </p>
+        </ConfigPanel>
+
+        {/* Center: visualizer + controls */}
+        <div className="flex flex-col items-center gap-4">
+          <div
+            className="border-border bg-card flex w-full flex-col items-center justify-center gap-5 rounded-2xl border px-6 py-8 shadow-sm"
+            style={{
+              backgroundImage:
+                'linear-gradient(to right, hsl(var(--border) / 0.35) 1px, transparent 1px), linear-gradient(to bottom, hsl(var(--border) / 0.35) 1px, transparent 1px)',
+              backgroundSize: '20px 20px',
+              backgroundPosition: 'center center',
+            }}
+          >
+            {agentConnected ? (
+              <>
+                <AudioVisualizer state={agentState} audioTrack={agentAudioTrack} barCount={7} />
+                <AgentStateIndicator state={simpleState} />
+              </>
+            ) : (
+              <div className="flex flex-col items-center gap-3">
+                <span className="border-primary h-8 w-8 animate-spin rounded-full border-2 border-t-transparent" />
+                <p className="text-muted-foreground text-sm">
+                  {agentState === 'failed'
+                    ? 'Agent failed to connect.'
+                    : 'Waiting for agent to connect…'}
+                </p>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {/* Call controls */}
-      <div className="flex items-center gap-4">
-        {/* Mic toggle */}
-        <button
-          onClick={handleToggleMic}
-          title={isMicrophoneEnabled ? 'Mute microphone' : 'Unmute microphone'}
-          className={`flex h-12 w-12 items-center justify-center rounded-full border transition-colors ${
-            isMicrophoneEnabled
-              ? 'border-border bg-card hover:bg-muted text-foreground'
-              : 'border-transparent bg-yellow-500 text-white hover:bg-yellow-400'
-          }`}
-        >
-          {isMicrophoneEnabled ? <MicIcon /> : <MicOffIcon />}
-        </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleToggleMic}
+              title={isMicrophoneEnabled ? 'Mute microphone' : 'Unmute microphone'}
+              className={`flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${
+                isMicrophoneEnabled
+                  ? 'border-border bg-card hover:bg-muted text-foreground'
+                  : 'border-transparent bg-yellow-500 text-white hover:bg-yellow-400'
+              }`}
+            >
+              {isMicrophoneEnabled ? <MicIcon /> : <MicOffIcon />}
+            </button>
 
-        {/* End call */}
-        <button
-          onClick={handleEndCall}
-          title="End call"
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-red-500 text-white transition-colors hover:bg-red-400"
-        >
-          <PhoneOffIcon />
-        </button>
+            <button
+              onClick={handleEndCall}
+              title="End call"
+              className="flex h-13 w-13 items-center justify-center rounded-full bg-red-500 text-white transition-colors hover:bg-red-400"
+            >
+              <PhoneOffIcon />
+            </button>
+          </div>
+        </div>
+
+        {/* Right: session config */}
+        <ConfigPanel title="Session config">
+          <dl className="text-muted-foreground space-y-3 text-xs">
+            <div>
+              <dt className="text-foreground mb-0.5 text-xs font-semibold">LLM</dt>
+              <dd>{display.llmLabel}</dd>
+            </div>
+            <div>
+              <dt className="text-foreground mb-0.5 text-xs font-semibold">Speech-to-text</dt>
+              <dd>{display.sttLabel}</dd>
+            </div>
+            <div>
+              <dt className="text-foreground mb-0.5 text-xs font-semibold">Text-to-speech</dt>
+              <dd>{display.ttsLabel}</dd>
+            </div>
+          </dl>
+        </ConfigPanel>
       </div>
     </div>
   );
 }
-
-// ── Inline SVG icons (no extra deps) ────────────────────────────────────────
 
 function MicIcon() {
   return (
@@ -172,8 +217,6 @@ function PhoneOffIcon() {
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
-
 interface CallPageProps {
   params: Promise<{ sessionId: string }>;
 }
@@ -181,6 +224,7 @@ interface CallPageProps {
 export default function CallPage({ params }: CallPageProps) {
   const { sessionId } = use(params);
   const searchParams = useSearchParams();
+  const display = voiceCallDisplayFromSearchParams(searchParams);
 
   const token = searchParams.get('token') ?? '';
   const roomName = searchParams.get('room_name') ?? '';
@@ -189,7 +233,7 @@ export default function CallPage({ params }: CallPageProps) {
 
   return (
     <AgentSessionProvider session={session}>
-      <CallView sessionId={sessionId} />
+      <CallView sessionId={sessionId} display={display} />
     </AgentSessionProvider>
   );
 }

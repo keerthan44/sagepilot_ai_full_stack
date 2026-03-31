@@ -2,6 +2,10 @@
 
 import { useSessionDetail } from '@/features/voice/hooks/useSessionDetail';
 import type { TranscriptEntry } from '@/features/voice/types';
+import {
+  sessionVoiceProviderLabels,
+  sessionVoiceSttTtsConfigs,
+} from '@/features/voice/voice-call-config';
 
 interface SessionDetailProps {
   sessionId: string;
@@ -104,6 +108,9 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
   }
 
   const transcript = session.transcript ?? [];
+  const { stt, tts, llm } = sessionVoiceProviderLabels(session.config);
+  const { sttConfig, ttsConfig, llmConfig } = sessionVoiceSttTtsConfigs(session.config);
+
   function humanize(text: string): string {
     if (!text) return '';
 
@@ -134,6 +141,46 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
         <p className="text-muted-foreground text-xs">
           {new Date(session.created_at).toLocaleString()}
         </p>
+      </div>
+
+      <div className="border-border bg-muted/30 flex flex-col gap-4 rounded-lg border px-4 py-3 text-sm">
+        <div>
+          <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">LLM</p>
+          <p className="text-foreground mt-0.5 font-medium">{llm}</p>
+          {llmConfig && Object.keys(llmConfig).length > 0 ? (
+            <pre className="border-border bg-background/80 text-muted-foreground mt-2 max-h-40 overflow-auto rounded-md border p-2 font-mono text-xs">
+              {JSON.stringify(llmConfig, null, 2)}
+            </pre>
+          ) : (
+            <p className="text-muted-foreground mt-1 text-xs">No LLM options in session payload.</p>
+          )}
+        </div>
+        <div>
+          <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+            Speech to text
+          </p>
+          <p className="text-foreground mt-0.5 font-medium">{stt}</p>
+          {sttConfig && Object.keys(sttConfig).length > 0 ? (
+            <pre className="border-border bg-background/80 text-muted-foreground mt-2 max-h-40 overflow-auto rounded-md border p-2 font-mono text-xs">
+              {JSON.stringify(sttConfig, null, 2)}
+            </pre>
+          ) : (
+            <p className="text-muted-foreground mt-1 text-xs">No STT options in session payload.</p>
+          )}
+        </div>
+        <div>
+          <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+            Text to speech
+          </p>
+          <p className="text-foreground mt-0.5 font-medium">{tts}</p>
+          {ttsConfig && Object.keys(ttsConfig).length > 0 ? (
+            <pre className="border-border bg-background/80 text-muted-foreground mt-2 max-h-40 overflow-auto rounded-md border p-2 font-mono text-xs">
+              {JSON.stringify(ttsConfig, null, 2)}
+            </pre>
+          ) : (
+            <p className="text-muted-foreground mt-1 text-xs">No TTS options in session payload.</p>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-3">
