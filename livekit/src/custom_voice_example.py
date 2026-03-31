@@ -83,12 +83,20 @@ async def my_agent(ctx: JobContext):
         temperature=0.7,
     )
     
-    # Option 1: ElevenLabs TTS
+    # # Option 1: ElevenLabs TTS
+    # tts = create_tts(
+    #     provider="elevenlabs",
+    #     model="eleven_flash_v2_5",
+    #     voice="hpp4J3VqNfWAUOO0d1Us",  # Default voice
+    #     transport="http",  # HTTP streaming is more reliable for per-utterance synthesis
+    # )
+
+    # Option 2: Cartesia TTS
     tts = create_tts(
-        provider="elevenlabs",
-        model="eleven_flash_v2_5",
-        voice="hpp4J3VqNfWAUOO0d1Us",  # Default voice
-        transport="http",  # HTTP streaming is more reliable for per-utterance synthesis
+        provider="cartesia",
+        model="sonic-3",
+        voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",  # Example voice ID
+        transport="http",
     )
     
     # Option 2: ElevenLabs TTS (uncomment to use)

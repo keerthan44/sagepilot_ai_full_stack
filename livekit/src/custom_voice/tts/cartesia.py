@@ -44,7 +44,8 @@ class CartesiaTTS(BaseTTS):
         voice: str,
         transport: Literal["websocket", "http"] = "websocket",
         api_key: str | None = None,
-        base_url: str = "https://api.cartesia.ai/v1/tts",
+        base_url: str = "https://api.cartesia.ai",
+        api_version: str = "2024-06-10",
         sample_rate: int = 24000,
         chunking_strategy: ChunkingStrategy = ChunkingStrategy.SENTENCE,
         min_chunk_size: int = 10,
@@ -58,7 +59,8 @@ class CartesiaTTS(BaseTTS):
             voice: Voice ID
             transport: Transport protocol ("websocket" or "http")
             api_key: Cartesia API key (or set CARTESIA_API_KEY env var)
-            base_url: Base API URL
+            base_url: Base API URL (default: https://api.cartesia.ai)
+            api_version: Cartesia API version (default: 2024-06-10)
             sample_rate: Audio sample rate in Hz
             chunking_strategy: Strategy for chunking streaming text (sentence, word, immediate)
             min_chunk_size: Minimum characters before sending chunk to synthesis
@@ -80,6 +82,7 @@ class CartesiaTTS(BaseTTS):
         
         self._transport = transport
         self._base_url = base_url
+        self._api_version = api_version
         self._chunking_strategy = chunking_strategy
         self._min_chunk_size = min_chunk_size
         self._session: aiohttp.ClientSession | None = None
@@ -124,54 +127,85 @@ class CartesiaTTS(BaseTTS):
         """Synthesize using WebSocket transport."""
         session = self._get_session()
         
-        # Convert base URL to WebSocket
-        ws_url = self._base_url.replace("https://", "wss://").replace("http://", "ws://")
+        # Build WebSocket URL with API key and version as query parameters
+        ws_base = self._base_url.replace("https://", "wss://").replace("http://", "ws://")
+        ws_url = f"{ws_base}/tts/websocket?api_key={self._api_key}&cartesia_version={self._api_version}"
+        
+        logger.debug("CartesiaTTS: connecting to WebSocket (url=%s)", ws_url.replace(self._api_key, "***"))
         
         async with session.ws_connect(
             ws_url,
-            headers={"Authorization": f"Bearer {self._api_key}"},
+            headers={"User-Agent": "CartesiaTTS/1.0 (integration=CustomVoiceStack)"},
         ) as ws:
-            # Send configuration
-            config = {
-                "type": "config",
-                "model": self._model,
-                "voice": self._voice,
-                "sample_rate": self._sample_rate,
-                "output_format": "pcm_16000",
-            }
-            await ws.send_json(config)
+            logger.info("CartesiaTTS: WebSocket connected")
             
             # Task to send text
             async def send_text():
                 try:
+                    # Build base message with voice and output format
+                    base_msg = {
+                        "model_id": self._model,
+                        "voice": {
+                            "mode": "id",
+                            "id": self._voice,
+                        },
+                        "output_format": {
+                            "container": "raw",
+                            "encoding": "pcm_s16le",
+                            "sample_rate": self._sample_rate,
+                        },
+                        "language": "en",
+                    }
+                    
                     if isinstance(text, str):
-                        await ws.send_json({"type": "text", "text": text})
+                        # Single text message
+                        msg = base_msg.copy()
+                        msg["transcript"] = text
+                        msg["continue"] = False
+                        await ws.send_str(json.dumps(msg))
+                        logger.debug("CartesiaTTS: sent single text chunk: %r", text[:50])
                     else:
+                        # Streaming text chunks
+                        chunk_count = 0
                         async for chunk in text:
                             if self._check_cancelled():
                                 break
-                            await ws.send_json({"type": "text", "text": chunk})
-                    
-                    # Send end marker
-                    await ws.send_json({"type": "end"})
+                            
+                            chunk_count += 1
+                            msg = base_msg.copy()
+                            msg["transcript"] = chunk
+                            msg["continue"] = True  # More chunks coming
+                            await ws.send_str(json.dumps(msg))
+                            logger.debug("CartesiaTTS: sent text chunk %d: %r", chunk_count, chunk[:50])
+                        
+                        # Send final empty chunk to signal end
+                        if not self._check_cancelled():
+                            end_msg = base_msg.copy()
+                            end_msg["transcript"] = " "
+                            end_msg["continue"] = False
+                            await ws.send_str(json.dumps(end_msg))
+                            logger.debug("CartesiaTTS: sent final chunk (continue=False)")
                 except Exception:
-                    pass
+                    logger.exception("CartesiaTTS: error in send_text task")
             
             # Start sending text
             send_task = asyncio.create_task(send_text())
             
             try:
                 # Receive audio
+                frame_count = 0
                 async for msg in ws:
                     if self._check_cancelled():
+                        logger.debug("CartesiaTTS: cancelled, stopping receive")
                         break
                     
                     if msg.type == aiohttp.WSMsgType.TEXT:
                         data = json.loads(msg.data)
                         
-                        if data.get("type") == "audio":
+                        # Cartesia sends audio in "data" field as base64
+                        if data.get("data"):
                             # Decode base64 audio
-                            audio_b64 = data.get("data", "")
+                            audio_b64 = data["data"]
                             audio_bytes = base64.b64decode(audio_b64)
                             
                             # Convert to audio frame
@@ -182,12 +216,26 @@ class CartesiaTTS(BaseTTS):
                                 num_channels=1,
                                 samples_per_channel=len(audio_array),
                             )
+                            frame_count += 1
+                            if frame_count == 1:
+                                logger.info("CartesiaTTS: first audio frame received (%d samples)", len(audio_array))
                             yield frame
                         
-                        elif data.get("type") == "done":
+                        # Check for done signal
+                        if data.get("done"):
+                            logger.debug("CartesiaTTS: received done signal (%d frames)", frame_count)
                             break
                     
+                    elif msg.type in (
+                        aiohttp.WSMsgType.CLOSED,
+                        aiohttp.WSMsgType.CLOSE,
+                        aiohttp.WSMsgType.CLOSING,
+                    ):
+                        logger.debug("CartesiaTTS: WebSocket closed by server")
+                        break
+                    
                     elif msg.type == aiohttp.WSMsgType.ERROR:
+                        logger.error("CartesiaTTS: WebSocket error")
                         break
             finally:
                 send_task.cancel()
@@ -200,7 +248,7 @@ class CartesiaTTS(BaseTTS):
         self,
         text: str | AsyncIterable[str],
     ) -> AsyncIterable[rtc.AudioFrame]:
-        """Synthesize using HTTP transport."""
+        """Synthesize using HTTP transport (bytes endpoint)."""
         # Collect text if it's a stream
         if isinstance(text, str):
             full_text = text
@@ -217,36 +265,90 @@ class CartesiaTTS(BaseTTS):
         
         session = self._get_session()
         
-        # Make HTTP request
+        # Build payload matching Cartesia's /tts/bytes endpoint
         payload = {
-            "model": self._model,
-            "voice": self._voice,
-            "text": full_text,
-            "sample_rate": self._sample_rate,
-            "output_format": "pcm_16000",
+            "model_id": self._model,
+            "transcript": full_text,
+            "voice": {
+                "mode": "id",
+                "id": self._voice,
+            },
+            "output_format": {
+                "container": "raw",
+                "encoding": "pcm_s16le",
+                "sample_rate": self._sample_rate,
+            },
+            "language": "en",
         }
         
+        logger.debug("CartesiaTTS: HTTP request to /tts/bytes (text=%r)", full_text[:50])
+        
+        # Make HTTP request to /tts/bytes endpoint
         async with session.post(
-            self._base_url,
+            f"{self._base_url}/tts/bytes",
             json=payload,
-            headers={"Authorization": f"Bearer {self._api_key}"},
+            headers={
+                "X-API-Key": self._api_key,
+                "Cartesia-Version": self._api_version,
+                "User-Agent": "CartesiaTTS/1.0 (integration=CustomVoiceStack)",
+            },
         ) as response:
             response.raise_for_status()
-            result = await response.json()
             
-            # Decode audio
-            audio_b64 = result.get("audio", "")
-            audio_bytes = base64.b64decode(audio_b64)
+            # Buffer for incomplete samples (PCM s16le = 2 bytes per sample)
+            buffer = b""
+            frame_count = 0
             
-            # Convert to audio frame
-            audio_array = np.frombuffer(audio_bytes, dtype=np.int16)
-            frame = rtc.AudioFrame(
-                data=audio_array,
-                sample_rate=self._sample_rate,
-                num_channels=1,
-                samples_per_channel=len(audio_array),
-            )
-            yield frame
+            # Stream audio chunks from response
+            async for data, _ in response.content.iter_chunks():
+                if self._check_cancelled():
+                    break
+                
+                if not data:
+                    continue
+                
+                # Add to buffer
+                buffer += data
+                
+                # Process complete int16 samples (2 bytes each)
+                # Keep any incomplete bytes in buffer
+                bytes_per_sample = 2  # int16
+                complete_bytes = (len(buffer) // bytes_per_sample) * bytes_per_sample
+                
+                if complete_bytes > 0:
+                    # Extract complete samples
+                    complete_data = buffer[:complete_bytes]
+                    buffer = buffer[complete_bytes:]
+                    
+                    # Create audio frame directly from bytes (not numpy array)
+                    num_samples = len(complete_data) // 2
+                    frame = rtc.AudioFrame(
+                        data=complete_data,
+                        sample_rate=self._sample_rate,
+                        num_channels=1,
+                        samples_per_channel=num_samples,
+                    )
+                    frame_count += 1
+                    if frame_count == 1:
+                        logger.info("CartesiaTTS: first HTTP audio frame received (%d samples)", num_samples)
+                    yield frame
+            
+            # Process any remaining buffered data
+            if buffer and not self._check_cancelled():
+                if len(buffer) % 2 == 0:  # Only if we have complete samples
+                    num_samples = len(buffer) // 2
+                    frame = rtc.AudioFrame(
+                        data=buffer,
+                        sample_rate=self._sample_rate,
+                        num_channels=1,
+                        samples_per_channel=num_samples,
+                    )
+                    frame_count += 1
+                    yield frame
+                else:
+                    logger.warning("CartesiaTTS: discarding %d incomplete bytes", len(buffer))
+            
+            logger.debug("CartesiaTTS: HTTP synthesis complete (%d frames)", frame_count)
     
     async def synthesize_stream_from_iterator(
         self,
