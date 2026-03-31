@@ -15,7 +15,7 @@ dependencies = [
     { name = "aiohttp" },
     { name = "langchain-core" },
     { name = "langchain-openai" },
-    { name = "livekit-agents", extra = ["deepgram", "elevenlabs", "silero", "turn-detector"] },
+    { name = "livekit-agents", extra = ["assemblyai", "deepgram", "elevenlabs", "silero", "turn-detector"] },
     { name = "livekit-plugins-noise-cancellation" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -35,7 +35,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.9" },
     { name = "langchain-core", specifier = ">=1.2.23" },
     { name = "langchain-openai", specifier = ">=1.1.12" },
-    { name = "livekit-agents", extras = ["deepgram", "elevenlabs", "silero", "turn-detector"], specifier = "~=1.4" },
+    { name = "livekit-agents", extras = ["assemblyai", "deepgram", "elevenlabs", "silero", "turn-detector"], specifier = "~=1.4" },
     { name = "livekit-plugins-noise-cancellation", specifier = "~=0.2" },
     { name = "numpy", specifier = ">=1.24" },
     { name = "openai", specifier = ">=1.0" },
@@ -1129,6 +1129,9 @@ wheels = [
 ]
 
 [package.optional-dependencies]
+assemblyai = [
+    { name = "livekit-plugins-assemblyai" },
+]
 codecs = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -1197,6 +1200,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/72/08/93ed14e757f3bb3d22c40e11900ea2815883b7beb331fe758c8d40ea1dd0/livekit_blingfire-1.1.0-cp314-cp314t-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:20b95b2c15c4a1af4e68c1aa7d885bf295f89ee6eb5c1a1fdfa315a51795b30d", size = 170081 },
     { url = "https://files.pythonhosted.org/packages/0f/6d/b2a23cafabf55561c463490b3a87e323640259ae340e6db26bb71e0fa26d/livekit_blingfire-1.1.0-cp314-cp314t-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:6c13ef26e5234674ac353b7cfaadeb23468e951eb07461b6b6c77f79cd5ff763", size = 176755 },
     { url = "https://files.pythonhosted.org/packages/60/93/c00c175d2187160bdb2dac6b338203d51396307dfce23f03defb3b5e5572/livekit_blingfire-1.1.0-cp314-cp314t-win_amd64.whl", hash = "sha256:c91b2315e0497383384304d33554d70b8a63dec5ad96cd43437c67f4172077cf", size = 141072 },
+]
+
+[[package]]
+name = "livekit-plugins-assemblyai"
+version = "1.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "livekit-agents" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9b/8f/390b80cd5057ceabc33240ed97e446540ee29549dd63ca9a5649ac9d2317/livekit_plugins_assemblyai-1.5.1.tar.gz", hash = "sha256:b940fa3f431779589ac86cea7246aa9c95f7b4f643fc0fb301b942a6056075ea", size = 8885 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0b/95/5b8efa63d4520f65fe099aea28fc1f213ba78374da6041af38c19fb08e15/livekit_plugins_assemblyai-1.5.1-py3-none-any.whl", hash = "sha256:9040b59b37a07da2d43c77cfa4cb26860426f421175e858b922e846d42df82ee", size = 9412 },
 ]
 
 [[package]]

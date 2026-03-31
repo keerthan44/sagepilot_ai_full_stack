@@ -1,5 +1,5 @@
 import logging
-from livekit.plugins import deepgram, elevenlabs
+from livekit.plugins import deepgram, elevenlabs, assemblyai
 
 from dotenv import load_dotenv
 from livekit import rtc

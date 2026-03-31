@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from ..config import STTConfig
 from ..protocols import STTProtocol
+from .assemblyai import AssemblyAISTT
 from .deepgram import DeepgramSTT
 
 
@@ -55,6 +56,16 @@ def create_stt(
             **kwargs,
         )
     
+    elif provider == "assemblyai":
+        if not model:
+            model = "universal-streaming-english"
+        
+        return AssemblyAISTT(
+            model=model,
+            language=language,
+            **kwargs,
+        )
+    
     # Add more providers here
     # elif provider == "whisper":
     #     return WhisperSTT(...)
@@ -64,5 +75,5 @@ def create_stt(
     else:
         raise ValueError(
             f"Unsupported STT provider: {provider}. "
-            f"Supported providers: deepgram"
+            f"Supported providers: deepgram, assemblyai"
         )

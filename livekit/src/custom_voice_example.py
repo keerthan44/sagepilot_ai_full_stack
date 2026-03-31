@@ -70,10 +70,11 @@ async def my_agent(ctx: JobContext):
     
     # Create components using factory functions
     stt = create_stt(
-        provider="deepgram",
-        model="nova-3",
-        language="multi",
-        transport="websocket",
+        provider="assemblyai",
+        # provider="deepgram",
+        # model="nova-3",
+        # language="multi",
+        # transport="websocket",
     )
     
     llm = create_llm(
