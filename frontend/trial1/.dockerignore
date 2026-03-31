@@ -1,0 +1,22 @@
+# dependencies & build output
+node_modules
+.next
+out
+
+# env & secrets (inject at build/run via your platform)
+.env
+.env.*
+!.env.example
+
+# git & tooling
+.git
+.github
+.cursor
+*.md
+Dockerfile*
+docker-compose*.yml
+
+# tests & misc
+coverage
+.turbo
+*.log

@@ -47,7 +47,7 @@ COPY . .
 # Pre-download any ML models or files the agent needs
 # This ensures the container is ready to run immediately without downloading
 # dependencies at runtime, which improves startup time and reliability
-RUN uv run "src/agent.py" download-files
+RUN uv run "src/custom_voice_example.py" download-files
 
 # --- Production stage ---
 # Build tools (gcc, g++, python3-dev) are not included in the final image
@@ -68,6 +68,11 @@ RUN adduser \
 # This avoids expensive recursive chown and excludes build tools from the final image
 COPY --from=build --chown=appuser:appuser /app /app
 
+# Copy the downloaded model files from the build stage to /app/.cache
+# The models are cached in /root/.cache during the build stage
+# We copy to /app/.cache because HOME is set to /app for the appuser
+COPY --from=build --chown=appuser:appuser /root/.cache /app/.cache
+
 WORKDIR /app
 
 # Switch to the non-privileged user for all subsequent operations
@@ -77,4 +82,4 @@ USER appuser
 # Run the AgentServer using UV
 # UV will activate the virtual environment and run the agent.
 # The "start" command tells the AgentServer to connect to LiveKit and begin waiting for jobs.
-CMD ["uv", "run", "src/custom_voice_example.py", "start"]
+CMD ["uv", "run", "src/custom_voice_example.py", "dev"]

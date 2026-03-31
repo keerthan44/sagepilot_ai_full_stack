@@ -4,19 +4,12 @@ __pycache__/
 *$py.class
 *.so
 .Python
-.env*
 
 # Virtual environments
 .venv/
-.venc/
 venv/
 ENV/
 env/
-
-# Environment files
-.env
-.env.local
-.env.*.local
 
 # IDEs
 .vscode/
@@ -25,22 +18,26 @@ env/
 *.swo
 *~
 
-# Database
-*.db
-*.sqlite3
+# Git
+.git/
+.gitignore
+
+# Environment files
+.env
+.env.local
+
+# Documentation
+*.md
+!README.md
 
 # Alembic
-alembic/versions/__pycache__/
+alembic/versions/*.pyc
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
-.tox/
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Docker
-*.log

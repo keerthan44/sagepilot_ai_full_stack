@@ -84,7 +84,7 @@ export default function HomePage() {
               </span>
             </p>
           ) : null}
-          {ttsProvider === 'cartesia' ? (
+          {/* {ttsProvider === 'cartesia' ? (
             <p className="flex gap-2 rounded-md bg-yellow-500/15 px-3 py-2 text-xs text-yellow-800 dark:text-yellow-200">
               <span aria-hidden>🐛</span>
               <span>
@@ -92,7 +92,7 @@ export default function HomePage() {
                 working cleanly yet.
               </span>
             </p>
-          ) : null}
+          ) : null} */}
           <ProviderSelector
             label="STT provider"
             name="stt_provider"

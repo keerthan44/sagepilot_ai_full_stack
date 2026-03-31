@@ -1,0 +1,95 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sagepilot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sagepilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sagepilot}
+      POSTGRES_DB: ${POSTGRES_DB:-sagepilot}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5431:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sagepilot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sagepilot-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sagepilot-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      DATABASE_URL: postgresql://sagepilot:sagepilot@postgres:5432/sagepilot
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - sagepilot-network
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+
+  frontend:
+    build:
+      context: ./frontend/trial1
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+        NEXT_PUBLIC_LIVEKIT_URL: ${NEXT_PUBLIC_LIVEKIT_URL:-wss://trial-cvwj2a0r.livekit.cloud}
+    container_name: sagepilot-frontend
+    restart: unless-stopped
+    env_file:
+      - ./frontend/trial1/.env.prod
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - sagepilot-network
+
+  livekit:
+    build:
+      context: ./livekit
+      dockerfile: Dockerfile
+    container_name: sagepilot-livekit
+    restart: unless-stopped
+    env_file:
+      - ./livekit/.env.prod
+    depends_on:
+      - backend
+    networks:
+      - sagepilot-network
+
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: sagepilot-dozzle
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "9999:8080"
+    environment:
+      DOZZLE_LEVEL: info
+      DOZZLE_TAILSIZE: 300
+      DOZZLE_FILTER: "name=sagepilot-*"
+    networks:
+      - sagepilot-network
+
+networks:
+  sagepilot-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
