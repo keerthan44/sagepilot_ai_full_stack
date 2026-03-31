@@ -10,6 +10,9 @@ interface UseSessionDetailResult {
   error: string | null;
 }
 
+const INITIAL_DELAY_MS = 1000;
+const MAX_RETRIES = 5;
+
 export function useSessionDetail(sessionId: string): UseSessionDetailResult {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -19,23 +22,44 @@ export function useSessionDetail(sessionId: string): UseSessionDetailResult {
     if (!sessionId) return;
 
     let cancelled = false;
+    let retryCount = 0;
+    let timeoutId: ReturnType<typeof setTimeout>;
 
-    voiceService
-      .getSession(sessionId)
-      .then((data) => {
-        if (!cancelled) setSession(data);
-      })
-      .catch((err) => {
+    async function fetchWithRetry() {
+      if (cancelled) return;
+
+      try {
+        const data = await voiceService.getSession(sessionId);
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load session');
+          setSession(data);
+          setLoading(false);
         }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      } catch (err) {
+        if (cancelled) return;
+
+        retryCount++;
+
+        if (retryCount >= MAX_RETRIES) {
+          setError(err instanceof Error ? err.message : 'Failed to load session');
+          setLoading(false);
+          return;
+        }
+
+        // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+        const delayMs = INITIAL_DELAY_MS * Math.pow(2, retryCount - 1);
+        console.log(
+          `[useSessionDetail] Retry ${retryCount}/${MAX_RETRIES} after ${delayMs}ms for session ${sessionId}`
+        );
+
+        timeoutId = setTimeout(fetchWithRetry, delayMs);
+      }
+    }
+
+    fetchWithRetry();
 
     return () => {
       cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, [sessionId]);
 
