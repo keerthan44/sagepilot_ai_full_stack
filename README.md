@@ -58,3 +58,7 @@ docker compose up --build
 | Frontend | http://localhost:3000      |
 | Backend  | http://localhost:8000      |
 | Logs     | http://localhost:9999      |
+
+# Demo
+
+You can view the demo video: https://youtu.be/KZI5R5BLuog
