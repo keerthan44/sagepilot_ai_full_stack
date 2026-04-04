@@ -25,10 +25,6 @@ The codebase contains scaffolding for a third turn detection path that would det
 
 However, the end-to-end integration was never completed and the path has never been tested. In the current working system, `audio_turn_queue` is `None`, `AudioTurnConsumer` is never started, and `_audio_turn_probability` is always `0.0`. The architecture doc documents only the working paths.
 
-### VAD provider
-
-VAD is hard-coded to Silero. It is not config-driven like STT and TTS. A production system would apply the same factory pattern.
-
 ---
 
 ## Provider Failover — How It Would Be Built
@@ -70,18 +66,3 @@ class FallbackSTT(BaseSTT):
 ```
 
 The same wrapper pattern applies identically to TTS via `TTSProtocol`. Because both STT and TTS hide behind the same interface, the session and consumers require zero changes — you swap `DeepgramSTT` for `FallbackSTT(DeepgramSTT, AssemblyAISTT)` at construction time in the factory.
-
-### Why the abstraction makes this easy
-
-The protocol layer was designed with exactly this in mind. `STTProtocol` and `TTSProtocol` are structural protocols — any class with the right methods satisfies them. A `FallbackSTT` or `RacingSTT` is just another implementation. It slots into the existing factory, gets wired the same way, and the rest of the system is unaware of the change.
-
----
-
-## What Would Be Improved Next
-
-- **Provider failover** — `FallbackSTT` and `FallbackTTS` wrappers as described above.
-- **Streaming transcript display** — surface `STT_INTERIM_TRANSCRIPT` events to the frontend via a LiveKit data channel or a WebSocket endpoint so users can see what they said.
-- **Per-agent TTS voice config** — currently voice is global; agents should carry their own voice identity in `AgentConfig`.
-- **Audio turn detection** — complete the `AudioTurnConsumer` path (scaffolding exists but was never integrated or tested). The idea is to run a parallel queue fed by `VADConsumer` that evaluates end-of-utterance from the audio signal directly, independently of STT, so turn decisions can be made faster and without waiting for a final transcript.
-- **More LLM providers** — the `LLMProtocol` / `BaseLLM` abstraction already supports adding Anthropic, Gemini, etc. Only `OpenAILLM` is implemented today.
-- **Session persistence and replay** — transcripts are saved to Postgres at session end, but there is no replay or analytics UI.
